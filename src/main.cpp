@@ -364,7 +364,7 @@ void loop()
             // charging state
             if(g_BMS.getBatteryCurrent() > (int16_t)g_Settings.idle_currentThres)
                 g_M365BMS.status |= 64;
-            else
+            else if(g_BMS.getBatteryCurrent() < (int16_t)g_Settings.idle_currentThres / 2)
                 g_M365BMS.status &= ~64;
 
             uint16_t batVoltage = g_BMS.getBatteryVoltage() / 10;
@@ -430,18 +430,15 @@ void debug_print()
     Serial.println(F(")"));
 
     Serial.print(F("SOC: "));
-    Serial.print(g_BMS.getSOC());
-    Serial.println(F(""));
+    Serial.println(g_BMS.getSOC());
 
     Serial.print(F("Temperature: "));
     Serial.print(g_BMS.getTemperatureDegC(1));
     Serial.print(F(" "));
-    Serial.print(g_BMS.getTemperatureDegC(2));
-    Serial.println(F(""));
+    Serial.println(g_BMS.getTemperatureDegC(2));
 
     Serial.print(F("Balancing status: "));
-    Serial.print(g_BMS.getBalancingStatus());
-    Serial.println(F(""));
+    Serial.println(g_BMS.getBalancingStatus());
 
     Serial.print(F("Cell voltages ("));
     int numCells = g_BMS.getNumberOfCells();
