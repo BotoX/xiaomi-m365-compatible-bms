@@ -179,6 +179,7 @@ private:
 
     uint8_t charging_;
     uint32_t chargeTimestamp_;
+    uint8_t fullVoltageCount_;
 
     volatile uint32_t interruptTimestamp_;
 

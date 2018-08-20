@@ -989,7 +989,13 @@ void bq769x0::updateVoltages()
     batVoltage_ = ((uint32_t)4.0 * adcGain_ * batVoltage_raw_) / 1000.0 + connectedCells_ * getADCPackOffset();
 
     if(batVoltage_ >= connectedCells_ * fullVoltage_) {
-        resetSOC(100);
+        if(fullVoltageCount_ == 240) { // 60s * 4(250ms)
+            resetSOC(100);
+        }
+        if(fullVoltageCount_ < 255)
+            fullVoltageCount_++;
+    } else {
+        fullVoltageCount_ = 0;
     }
 }
 
