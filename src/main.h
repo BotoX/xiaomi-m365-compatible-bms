@@ -63,15 +63,15 @@ struct BMSSettings
     uint8_t header[2] = {0xB0, 0x0B};
     uint16_t version = 1;
     char serial[14] = "BOTOX001";
-    uint32_t capacity = 12400; // mAh
+    uint32_t capacity = 7800; // mAh
     uint16_t nominal_voltage = 3600; // mV
-    uint16_t full_voltage = 4100; // mV
-    uint16_t num_cycles = 1;
-    uint16_t num_charged = 3;
-    uint16_t date = (18 << 9) | (6 << 5) | 1; // MSB (7 bits year, 4 bits month, 5 bits day) LSB
+    uint16_t full_voltage = 4150; // mV
+    uint16_t num_cycles = 0;
+    uint16_t num_charged = 0;
+    uint16_t date = (18 << 9) | (10 << 5) | 1; // MSB (7 bits year, 4 bits month, 5 bits day) LSB
 
     // setShuntResistorValue
-    uint16_t shuntResistor_uOhm = 965;
+    uint16_t shuntResistor_uOhm = 1000;
 
     // setThermistorBetaValue
     uint16_t thermistor_BetaK = 3435;
@@ -87,11 +87,11 @@ struct BMSSettings
     uint16_t SCD_delay = 200; // us
 
     // setOvercurrentChargeProtection
-    uint32_t OCD_current = 15000; // mA
+    uint32_t OCD_current = 20000; // mA
     uint16_t OCD_delay = 200; // ms
 
     // setOvercurrentDischargeProtection
-    uint32_t ODP_current = 33000; // mA
+    uint32_t ODP_current = 35000; // mA
     uint16_t ODP_delay = 320; // ms
 
     // setCellUndervoltageProtection
@@ -99,7 +99,7 @@ struct BMSSettings
     uint16_t UVP_delay = 2; // s
 
     // setCellOvervoltageProtection
-    uint16_t OVP_voltage = 4200; // mV
+    uint16_t OVP_voltage = 4250; // mV
     uint16_t OVP_delay = 2; // s
 
     // setBalancingThresholds
