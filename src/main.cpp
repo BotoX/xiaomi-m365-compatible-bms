@@ -29,7 +29,7 @@ void setup()
     // 115200 baud fix
     // https://forum.arduino.cc/index.php?topic=54623.0
     // http://codebender.cc/sketch:186647
-    OSCCAL = 163;
+    OSCCAL = 157;
     delay(100);
 
     Serial.begin(115200);
