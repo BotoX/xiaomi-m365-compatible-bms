@@ -49,7 +49,7 @@ public:
     void boot(uint8_t bootPin);
     uint8_t begin(uint8_t bootPin = 0xFF);
     uint8_t checkStatus();  // returns 0 if everything is OK
-    void update(void);
+    uint8_t update(void);  // returns checkStatus retval
     void shutdown(void);
 
     // charging control

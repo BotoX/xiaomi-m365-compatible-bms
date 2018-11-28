@@ -256,13 +256,14 @@ uint8_t bq769x0::checkStatus()
 //----------------------------------------------------------------------------
 // should be called at least once every 250 ms to get correct coulomb counting
 
-void bq769x0::update()
+uint8_t bq769x0::update()
 {
-    checkStatus(); // does updateCurrent()
+    uint8_t ret = checkStatus(); // does updateCurrent()
     //updateCurrent(); // will only read new current value if alert was triggered
     updateVoltages();
     updateTemperatures();
     updateBalancingSwitches();
+    return ret;
 }
 
 //----------------------------------------------------------------------------

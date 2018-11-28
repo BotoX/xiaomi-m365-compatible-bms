@@ -248,8 +248,8 @@ void ninebotRecv()
 
     while(Serial.available())
     {
-        if(millis() >= begin + 10)
-        { // 10ms timeout
+        if(millis() >= begin + 100)
+        { // 100ms timeout
             recvd = 0;
         }
 
@@ -356,7 +356,7 @@ void loop()
         if(g_interruptFlag)
             g_interruptFlag = false;
 
-        g_BMS.update(); // should be called at least every 250 ms
+        uint8_t error = g_BMS.update(); // should be called at least every 250 ms
         g_lastUpdate = now;
 
         // update M365BMS struct
@@ -398,6 +398,16 @@ void loop()
             byte numCells = g_BMS.getNumberOfConnectedCells();
             for(byte i = 0; i < numCells; i++)
                 g_M365BMS.cell_voltages[i] = g_BMS.getCellVoltage(i);
+
+            // cell voltage difference too big
+            uint16_t bigDelta = g_BMS.getMaxCellVoltage() - g_BMS.getMinCellVoltage();
+            if(bigDelta > 100)
+                error = 1;
+
+            if(error)
+                g_M365BMS.status &= ~1;
+            else
+                g_M365BMS.status |= 1;
         }
     }
 
