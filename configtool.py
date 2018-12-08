@@ -8,7 +8,7 @@ from binascii import hexlify
 import cstruct
 
 g_Running = True
-ser = serial.Serial('/dev/ttyUSB0', 115200)
+ser = serial.Serial('/dev/ttyUSB0', 76800)
 
 cstruct.typedef("uint8", "uint8_t")
 cstruct.typedef("int8", "int8_t")

@@ -20,12 +20,11 @@ Here's some pr0n of my 12S4P NCR18650B battery: [Gallery](https://cloud.botox.bz
 ## The caveat
 The BMS uses an ATMega328p MCU without an external crystal and thus has to use the internal 8 MHz resonator.  
 However at 8 MHz the hardware UART will not function at 115200 baud, which is the baudrate the M365 controller expects.  
-The frequency of the internal resonator can be adjusted using OSCCAL to still make this work.  
-However this has to be done on an individual basis, finding the value can be done in a few minutes with a serial UART dongle, a logic analyzer and [this script](https://codebender.cc/sketch:186647#OSCCAL.ino).  
-If you don't have a logic analyzer or oscilloscope you might still get lucky and the default value will work for you, or you will have to try a few different values (like 150, 155, 160, 165) to find the correct one for your MCU.  
+The frequency of the internal resonator can be calibrated (manually with an oscilloscope or logic analyzer) using OSCCAL to still make this work.  
 
-If you know a better solution for this problem then please do tell me. As far as I'm aware software serial can't fix this issue either.  
-Telling the manufacturer to add a crystal would be a great fix too.
+But instead we simply patch the M365 firmware to use 76800 baud which works just fine with the internal 8 MHz resonator and no calibration trouble.  
+Patch your firmware at [m365beta.botox.bz](https://m365beta.botox.bz/) and use the "Change ESC<->BMS baud rate to 76800" option.  
+Thanks to Oleg for the idea and help.
 
 
 ## Hardware
@@ -34,9 +33,6 @@ Telling the manufacturer to add a crystal would be a great fix too.
   * 10S - 13S. 30A version is recommended, >30A versions have both sides of the BMS PCB populated with MOSFETs and will not fit in the limited space of the M365.
 * An ISP programmer with a 6pin ISP cable/adapter, example: [Aliexpress](https://www.aliexpress.com/item/10-Pin-Convert-to-Standard-6-Pin-Adapter-Board-USBASP-USBISP-AVR-Programmer-USB/2055099231.html)
 * Serial UART adapter, sold by the BMS shop or on [Aliexpress](https://www.aliexpress.com/item/1PCS-CP2102-USB-2-0-to-TTL-UART-Module-6Pin-Serial-Converter-STC-Replace-FT232/32717057832.html)
-* Very good to have: A logic analyzer or oscilloscope to adjust the frequency offset for 115200 baud @ 8MHz
-  * For example: [Aliexpress](https://www.aliexpress.com/item/USB-Logic-Analyzer-24M-8CH-Microcontroller-ARM-FPGA-Debug-Tool-24MHz-16MHz-12MHz-8MHz-4MHz-2MHz/32953889214.html)
-  * [The issue](https://forum.arduino.cc/index.php?topic=54623.0), [The fix](http://codebender.cc/sketch:186647)
 
 
 ### Current Shunt resistors
@@ -85,6 +81,8 @@ The default fuses are: Low = 0xE2, High = 0xDA, Extended = 0xFD, Lockbits = 0xFE
 
 
 ## Troubleshooting
+Have you patched your M365 firmware for 76800 baud?
+
 Make sure the temperature sensors are plugged in and all wires are connected properly,  C- too.
 
 Reset the BMS by shorting GND with RST on the ISP header.
