@@ -41,6 +41,15 @@ By default the BMS comes with ten 4mOhm shunt resistors in parallel. This result
 A simple fix for this is to simply remove six of the ten 4mOhm resistors, this leave four 4mOhm resistors. Thus the shunt resistance will be 1mOhm.  
 And to fix the shunt voltage from getting cut in half two more small resistors are removed from the top layer, as in the pictures: [Bottom](https://cloud.botox.bz/s/J6oZWqJDikzpTw8/preview) and [Top](https://cloud.botox.bz/s/2ipzTsJNWQ222TH/preview).
 
+### Wiring
+#### IMPORTANT: The M365 ESC - connects to P- of the BMS!
+**Otherwise the M365 will be damaged when you brake with a full battery due to overvoltage!**
+
+**P- has to be used to charge the battery, otherwise the BMS offers no protection against faulty chargers/overvoltage!**
+
+**Do not cut the big - trace on the M365 ESC or it will damage the BMS because of different GND potentials on UART!**
+
+**Do not connect GND from the BMS to the M365 anywhere! P- is GND for the M365! The only extra wires going from the BMS to the M365 are RX and TX!**
 
 ## Software
 ### Configuration
@@ -51,12 +60,10 @@ Depending on your battery you might want to configure some of the settings here:
 * `nominal_voltage`: The nominal voltage in mV of your cells, this will be 3.6V for almost all cells.
 * `full_voltage`: The voltage in mV that you will charge your cells to. I only charge mine to 4.1V for cycle life.
 * `ODP_current`: Over current protection value in mA, if your scooter is shutting off on your crazy settings then make this higher.
-* `UVP_voltage`: The BMS will shut off when any cells voltage goes below this.
+* `UVP_voltage`: The BMS will shut off P- when any cells voltage goes below this.
   * Remember: During load the cell voltage will drop a lot.
-* `OVP_voltage`: The BMS will shut off when any cells voltage goes above this.
-  * **IMPORTANT**: During high speed braking with a full battery the voltage per cell can go up by more than 100mV for a short time!
-  * If you set this too low then you risk destroying your controller, the BMS shuts off and the system voltage will shoot up!
-  * I recommend making this 100mV higher than your `full_voltage`.
+* `OVP_voltage`: The BMS will shut off C- when any cells voltage goes above this.
+  * So do not connect your M365 ESC to C- or it'll die when you brake with a full battery, use P- for the ESC and C- to charge!
 
 ### Compiling
 This project uses [PlatformIO](https://platformio.org/), please check out their [Documentation](https://docs.platformio.org/en/latest/) to get started.
@@ -83,21 +90,23 @@ The default fuses are: Low = 0xE2, High = 0xDA, Extended = 0xFD, Lockbits = 0xFE
 ## Troubleshooting
 Have you patched your M365 firmware for 76800 baud?
 
-Make sure the temperature sensors are plugged in and all wires are connected properly,  C- too.
+Make sure the temperature sensors are plugged in and all wires are connected properly.
+B- needs to be connected to the battery -.
 
 Reset the BMS by shorting GND with RST on the ISP header.
 
 Run the `configtool.py` in an interactive python shell (IDLE on windows) and configure your COM port in there correctly first.  
 You'll probably have to install these two dependencies: [cstruct](https://pypi.org/project/cstruct/) and [pyserial](https://pypi.org/project/pyserial/).  
 Check the source code for commands you can use, though you'll probably only need `debug_print()`.
+You can also use any serial terminal and send this string in HEX `55aa0322fa0500dbfe` instead of `debug_print()`.
 
 
 ## M365
-After you've checked that your BMS works (voltage between + and C-) and communicates UART (it print's `BOOTED!` when it boots) you can connect it with your M365.
+After you've checked that your BMS works (voltage between + and P-) and communicates via UART (it print's `BOOTED!` when it boots) you can connect it with your M365.
 
 The original BMS was connected to the top 3pin header on the M365 ESC: [Image](https://cloud.botox.bz/s/QLzWYc9C253QECi/preview)  
-You'll have to connect the **R** pin to the BMSs **TX** pin and the **T** pin to the BMSs **RX** pin.  
-The **L** pin is + for the red light on the back fender, you'll have to make your own cable for that.
+You'll have to connect the ESC **R** pin to the BMS **TX** pin and the **T** pin to the **RX** pin.  
+The ESC **L** pin is + for the red/brake light on the back fender, you'll have to make your own cable for that.
 
 
 ## Final words
@@ -108,7 +117,7 @@ A big part of the BQ769x0 code is taken from here: [LibreSolar/bq769x0_mbed_lib]
 If you've spent at least an hour with your issue you can ask about it nicely in my [M365 Telegram group](https://t.me/XiaomiM365Hacking).
 
 ### Disclaimer
-If you brake anything it's your own fault.  
+If you break anything it's your own fault.  
 **Works for me™.** is the only guarantee I can give you.
 
 I am in no way affiliated with the company that makes the BMS. I just bought it, reversed some stuff and made this firmware.

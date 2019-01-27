@@ -99,7 +99,7 @@ struct BMSSettings
     uint16_t UVP_delay = 2; // s
 
     // setCellOvervoltageProtection
-    uint16_t OVP_voltage = 4250; // mV
+    uint16_t OVP_voltage = 4200; // mV
     uint16_t OVP_delay = 2; // s
 
     // setBalancingThresholds
