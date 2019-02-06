@@ -14,7 +14,20 @@ This is a fully fledged replacement BMS for the Xiaomi M365 that implements thei
 
 All the battery information can be viewed in the native apps or 3rd party apps like [m365 Tools](https://play.google.com/store/apps/details?id=app.peretti.m365tools).
 
-Here's some pr0n of my 12S4P NCR18650B battery: [Gallery](https://cloud.botox.bz/apps/gallery/s/94drnBJfjacBDnr).
+Here's some pr0n of my 12S4P NCR18650B battery: [Gallery](https://cloud.botox.bz/apps/gallery/s/94drnBJfjacBDnr).  
+Materials I used:
+- [Malectrics DIY Arduino Battery Spot Welder](https://malectrics.eu/product/diy-arduino-battery-spot-welder-prebuilt-kit-v3/)
+- [8mm*0.2mm pure nickel strip](https://www.aliexpress.com/item/Pure-Nickel-Strip-for-Scientific-research-18650-battery-welding-Size-0-2-8mm/32739610924.html) (0.15mm is easier to weld)
+- [18650 positive insulation pad](https://www.aliexpress.com/item/100Pcs-18650-lithium-battery-positive-electrode-hollow-flat-head-insulation-pad-meson-18500-positive-surface-pad/32850696072.html) **important**
+- [125mm/80mm Battery PVC shrink wrap](https://www.aliexpress.com/item/125mm-Diameter-80mm-PVC-Heat-Shrink-Tubing-for-Battery-Wrap-Free-Shipping/32790874560.html)
+- [50mm kapton tape](https://www.aliexpress.com/item/5-6-8-10-12-15-20-25-30-40-50MM-x-30M-Tape-Sticky-High/32889388030.html)
+- I used automotive windshield glue that I had lying around, anything that sticks well to PVC should work.
+- 18650 Cells: 
+  - I used NCR18650B because I got them cheap.
+  - Good price/performance: [Samsung INR18650-29E](https://eu.nkon.nl/samsung-inr18650-29e.html)
+- Charger: Mean Well HLG-240H-48A
+  - I paid 45€ for it at [getgoods.com](https://www.getgoods.com/products/442045/Mean-Well-HLG-240H-48A-LED-driver-LED-transformer-Constant-voltage-Constant-current-240-W-5-A-48-Vdc-PFC-circuit-Surge.html) but pricing seems to vary a lot by country.
+  - Look for another CC/CV power supply if this one is too expensive.
 
 
 ## The caveat
@@ -45,7 +58,7 @@ And to fix the shunt voltage from getting cut in half two more small resistors a
 #### IMPORTANT: The M365 ESC - connects to P- of the BMS!
 **Otherwise the M365 will be damaged when you brake with a full battery due to overvoltage!**
 
-**P- has to be used to charge the battery, otherwise the BMS offers no protection against faulty chargers/overvoltage!**
+**C- has to be used to charge the battery, otherwise the BMS offers no protection against faulty chargers/overvoltage!**
 
 **Do not cut the big - trace on the M365 ESC or it will damage the BMS because of different GND potentials on UART!**
 
