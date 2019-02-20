@@ -421,23 +421,40 @@ void bq769x0::updateBalancingSwitches(void)
 
         for (uint8_t section = 0; section < numberOfSections; section++)
         {
-            balancingFlags = 0;
+            // find cells which should be balanced and sort them by voltage descending
+            uint8_t cellList[5];
+            uint8_t cellCounter = 0;
             for (uint8_t i = 0; i < 5; i++)
             {
                 if (cellVoltages_[section*5 + i] < 500)
                     continue;
 
-                if ((cellVoltages_[section*5 + i] - cellVoltages_[idCellMinVoltage_]) > balancingMaxVoltageDifference_mV_) {
-
-                    // try to enable balancing of current cell
-                    balancingFlagsTarget = balancingFlags | (1 << i);
-
-                    // check if attempting to balance adjacent cells
-                    bool adjacentCellCollision = (balancingFlags << 1) & balancingFlagsTarget;
-
-                    if (adjacentCellCollision == false) {
-                        balancingFlags = balancingFlagsTarget;
+                if ((cellVoltages_[section*5 + i] - cellVoltages_[idCellMinVoltage_]) > balancingMaxVoltageDifference_mV_)
+                {
+                    int j = cellCounter;
+                    while (j > 0 && cellVoltages_[section*5 + cellList[j - 1]] < cellVoltages_[section*5 + i])
+                    {
+                        cellList[j] = cellList[j - 1];
+                        j--;
                     }
+                    cellList[j] = i;
+                    cellCounter++;
+                }
+            }
+
+            balancingFlags = 0;
+            for (uint8_t i = 0; i < cellCounter; i++)
+            {
+                // try to enable balancing of current cell
+                balancingFlagsTarget = balancingFlags | (1 << cellList[i]);
+
+                // check if attempting to balance adjacent cells
+                bool adjacentCellCollision =
+                    ((balancingFlagsTarget << 1) & balancingFlags) ||
+                    ((balancingFlags << 1) & balancingFlagsTarget);
+
+                if (adjacentCellCollision == false) {
+                    balancingFlags = balancingFlagsTarget;
                 }
             }
 
