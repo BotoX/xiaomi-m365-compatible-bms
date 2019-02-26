@@ -25,7 +25,7 @@ Materials I used:
 - 18650 Cells: 
   - I used NCR18650B because I got them cheap.
   - Good price/performance: [Samsung INR18650-29E](https://eu.nkon.nl/samsung-inr18650-29e.html)
-- Charger: Mean Well HLG-240H-48A
+- Charger: Mean Well HLG-240H-48A or ELG-240-48A
   - I paid 45€ for it at [getgoods.com](https://www.getgoods.com/products/442045/Mean-Well-HLG-240H-48A-LED-driver-LED-transformer-Constant-voltage-Constant-current-240-W-5-A-48-Vdc-PFC-circuit-Surge.html) but pricing seems to vary a lot by country.
   - Look for another CC/CV power supply if this one is too expensive.
 
@@ -111,7 +111,8 @@ Reset the BMS by shorting GND with RST on the ISP header.
 Run the `configtool.py` in an interactive python shell (IDLE on windows) and configure your COM port in there correctly first.  
 You'll probably have to install these two dependencies: [cstruct](https://pypi.org/project/cstruct/) and [pyserial](https://pypi.org/project/pyserial/).  
 Check the source code for commands you can use, though you'll probably only need `debug_print()`.
-You can also use any serial terminal and send this string in HEX `55aa0322fa0500dbfe` instead of `debug_print()`.
+You can also use any serial terminal and send this string in HEX `55aa0322fa0500dbfe` instead of `debug_print()`.  
+Since the controller will enter sleep mode after 1 second of inactivity you'll have to send this twice quickly when using a serial terminal.
 
 
 ## M365

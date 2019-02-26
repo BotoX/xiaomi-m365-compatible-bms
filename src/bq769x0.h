@@ -18,6 +18,7 @@
 #define BQ769X0_H
 
 #include <Arduino.h>
+#include "bq769x0_registers.h"
 
 #define MAX_NUMBER_OF_CELLS 15
 #define MAX_NUMBER_OF_THERMISTORS 3
@@ -37,7 +38,17 @@ enum {
     ERROR_UVP = 2,
     ERROR_OVP = 3,
     ERROR_SCD = 4,
-    ERROR_OCD = 5
+    ERROR_OCD = 5,
+    ERROR_USER_DISCHG_TEMP = 6,
+    ERROR_USER_CHG_TEMP = 7,
+    ERROR_USER_CHG_OCD = 8,
+    NUM_ERRORS
+};
+
+enum {
+    USER_DISCHG_TEMP = 1,
+    USER_CHG_TEMP = 2,
+    USER_CHG_OCD = 4,
 };
 
 class bq769x0 {
@@ -49,6 +60,7 @@ public:
     void boot(uint8_t bootPin);
     uint8_t begin(uint8_t bootPin = 0xFF);
     uint8_t checkStatus();  // returns 0 if everything is OK
+    uint8_t checkUser();  // returns 0 if everything is OK
     uint8_t update(void);  // returns checkStatus retval
     void shutdown(void);
 
@@ -59,11 +71,12 @@ public:
     void disableDischarging(void);
 
     // hardware settings
-    void setShuntResistorValue(uint32_t res_uOhm);
-    void setThermistorBetaValue(uint16_t beta_K);
+    void setShuntResistorValue(uint32_t res_uOhm = 1000);
+    void setThermistors(uint8_t bitflag);
+    void setThermistorBetaValue(uint16_t beta_K = 3435); // typical value for Semitec 103AT-5 thermistor
 
     void resetSOC(int percent = -1); // 0-100 %, -1 for automatic reset based on OCV
-    void setBatteryCapacity(int32_t capacity_mAh, uint16_t nomVoltage_mV, uint16_t fullVoltage_mV);
+    void setBatteryCapacity(int32_t capacity_mAh, uint16_t nomVoltage_mV = 3600, uint16_t fullVoltage_mV = 4200);
     void setOCV(uint16_t voltageVsSOC[NUM_OCV_POINTS]);
 
     void adjADCPackOffset(int16_t offset);
@@ -84,7 +97,8 @@ public:
 
     // balancing settings
     void setBalancingThresholds(uint16_t idleTime_s = 1800, uint16_t absVoltage_mV = 3400, uint8_t voltageDifference_mV = 20);
-    void setIdleCurrentThreshold(uint32_t current_mA);
+    void setIdleCurrentThreshold(uint32_t current_mA = 30);
+    void setBalanceCharging(bool charging); // balance if charging, ignores idle time
 
     // automatic balancing when battery is within balancing thresholds
     void enableAutoBalancing(void);
@@ -100,6 +114,8 @@ public:
     uint16_t getAvgCellVoltage(void);
     float getTemperatureDegC(uint8_t channel = 1);
     float getTemperatureDegF(uint8_t channel = 1);
+    int16_t getLowestTemperature(); // °C/10
+    int16_t getHighestTemperature(); // °C/10
     float getSOC(void);
     uint16_t getBalancingStatus(void);
 
@@ -113,7 +129,7 @@ public:
     // public variables
     uint8_t batCycles_;
     uint8_t chargedTimes_;
-    uint8_t errorCounter_[6];
+    uint8_t errorCounter_[NUM_ERRORS];
 
 private:
 
@@ -122,6 +138,10 @@ private:
     uint8_t I2CAddress_;
     uint8_t type_;
     bool crcEnabled_;
+    uint8_t userError_;
+
+    bool chargingEnabled_;
+    bool dischargingEnabled_;
 
     uint32_t shuntResistorValue_uOhm_;
     uint16_t thermistorBetaValue_; // typical value for Semitec 103AT-5 thermistor: 3435
@@ -142,6 +162,7 @@ private:
     int32_t batCurrent_; // mA
     int16_t batCurrent_raw_; // adc val
     int16_t temperatures_[MAX_NUMBER_OF_THERMISTORS]; // °C/10
+    uint8_t thermistors_;
 
     uint16_t nominalVoltage_; // mV, nominal voltage of single cell in battery pack
     uint16_t fullVoltage_; // mV, full voltage of single cell in battery pack
@@ -150,7 +171,8 @@ private:
     int32_t coulombCounter2_; // mAs (= milli Coulombs) for tracking battery cycles
 
     // Current limits (mA)
-    uint32_t maxChargeCurrent_;
+    int32_t maxChargeCurrent_;
+    uint16_t maxChargeCurrent_delay_;
     uint32_t maxDischargeCurrent_;
     uint32_t idleCurrentThreshold_;
 
@@ -176,10 +198,15 @@ private:
     uint32_t balancingStatus_;     // holds on/off status of balancing switches
     uint16_t balancingMinIdleTime_s_;
     uint32_t idleTimestamp_;
+    bool balanceCharging_;
 
     uint8_t charging_;
     uint32_t chargeTimestamp_;
     uint8_t fullVoltageCount_;
+
+    uint32_t user_CHGOCD_TriggerTimestamp_;
+    uint32_t user_CHGOCD_ReleaseTimestamp_;
+    bool user_CHGOCD_ReleasedNow_;
 
     volatile uint32_t interruptTimestamp_;
 

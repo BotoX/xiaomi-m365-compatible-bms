@@ -24,7 +24,7 @@ class M365BMS(cstruct.CStruct):
         /*20-2D*/   char serial[14] = "";
         /*2E-2F*/   uint16_t version = 0x900; // 0x115 = 1.1.5
         /*30-31*/   uint16_t design_capacity = 0; // mAh
-        /*32-33*/   uint16_t unk_capacity = 0; // mAh
+        /*32-33*/   uint16_t real_capacity = 0; // mAh
         /*34-35*/   uint16_t nominal_voltage = 0; // mV
         /*36-37*/   uint16_t num_cycles = 0;
         /*38-39*/   uint16_t num_charged = 0;
@@ -34,13 +34,14 @@ class M365BMS(cstruct.CStruct):
         /*40-41*/   uint16_t date = 0; // MSB (7 bits year, 4 bits month, 5 bits day) LSB
         /*42-47*/   uint8_t errors[6] = {0};
         /*48-5F*/   uint16_t unk3[12] = {0};
-        /*60-61*/   uint16_t status = 1; // 1 set = no error, 64 set = charging
+        /*60-61*/   uint16_t status = 1; // b0 = config valid, b6 = charging, b9 = overvoltage, b10 = overheat
         /*62-63*/   uint16_t capacity_left = 0; // mAh
         /*64-65*/   uint16_t percent_left = 0;
         /*66-67*/   int16_t current = 0; // A/100
         /*68-69*/   uint16_t voltage = 0; // V/100
         /*6A-6B*/   uint8_t temperature[2] = {0, 0}; // °C - 20
-        /*6C-75*/   uint16_t unk5[5] = {0};
+        /*6C-6D*/   uint16_t balance_bits = 0;
+        /*6E-75*/   uint16_t unk5[4] = {0};
         /*76-77*/   uint16_t health = 100; // %, <60% = battery bad
         /*78-7F*/   uint16_t unk6[4] = {0};
         /*80-9D*/   uint16_t cell_voltages[15] = {0}; // mV
@@ -53,15 +54,15 @@ class BMSSettings(cstruct.CStruct):
         uint8_t header[2] = {0xB0, 0x0B};
         uint16_t version = 1;
         char serial[14] = "BOTOX001";
-        uint32_t capacity = 12400; // mAh
+        uint32_t capacity = 7800; // mAh
         uint16_t nominal_voltage = 3600; // mV
-        uint16_t full_voltage = 4100; // mV
-        uint16_t num_cycles = 1;
-        uint16_t num_charged = 3;
-        uint16_t date = (18 << 9) | (6 << 5) | 1; // MSB (7 bits year, 4 bits month, 5 bits day) LSB
+        uint16_t full_voltage = 4150; // mV
+        uint16_t num_cycles = 0;
+        uint16_t num_charged = 0;
+        uint16_t date = (18 << 9) | (10 << 5) | 1; // MSB (7 bits year, 4 bits month, 5 bits day) LSB
 
         // setShuntResistorValue
-        uint16_t shuntResistor_uOhm = 965;
+        uint16_t shuntResistor_uOhm = 1000;
 
         // setThermistorBetaValue
         uint16_t thermistor_BetaK = 3435;
@@ -73,19 +74,19 @@ class BMSSettings(cstruct.CStruct):
         int16_t temp_maxChargeC = 45; // °C
 
         // setShortCircuitProtection
-        uint32_t SCD_current = 60000; // mA
+        uint32_t SCD_current = 80000; // mA
         uint16_t SCD_delay = 200; // us
 
         // setOvercurrentChargeProtection
-        uint32_t OCD_current = 15000; // mA
-        uint16_t OCD_delay = 200; // ms
+        uint32_t OCD_current = 6000; // mA
+        uint16_t OCD_delay = 3000; // ms
 
         // setOvercurrentDischargeProtection
-        uint32_t ODP_current = 33000; // mA
-        uint16_t ODP_delay = 320; // ms
+        uint32_t ODP_current = 40000; // mA
+        uint16_t ODP_delay = 1280; // ms
 
         // setCellUndervoltageProtection
-        uint16_t UVP_voltage = 2900; // mV
+        uint16_t UVP_voltage = 2800; // mV
         uint16_t UVP_delay = 2; // s
 
         // setCellOvervoltageProtection
@@ -130,7 +131,7 @@ class RecvThread(threading.Thread):
 
                 if recvd == 1:
                     if bi != 0x55:
-                        sys.stdout.write(b.decode('ascii'))
+                        sys.stdout.write(b.decode('ascii', 'replace'))
                         break
                     msg['header'] += b
 
@@ -176,6 +177,9 @@ class RecvThread(threading.Thread):
                         break
 
 def m365_send(length, addr, mode, offset, data):
+    ser.write(0x55) # Wake
+    time.sleep(0.05)
+
     arg = [length, addr, mode, offset]
     arg.extend(data)
     crc = sum(arg) ^ 0xFFFF
@@ -195,40 +199,61 @@ def m365_recv():
     return d
 
 
+#################
+# User Commands #
+#################
+
+# BMS Settings -> g_Settings
 def getSettings():
     m365_send(3, 0x22, 0xF1, 0, [len(g_Settings)])
     d = m365_recv()
     g_Settings.unpack(d['data'])
 
+# g_Settings -> BMS Settings
 def putSettings():
     d = g_Settings.pack()
     m365_send(2 + len(g_Settings), 0x22, 0xF3, 0, list(d))
 
+# apply (new) BMS settings
 def applySettings():
     m365_send(3, 0x22, 0xFA, 1, [0])
 
+# save BMS settings to EEPROM
 def saveSettings():
     m365_send(3, 0x22, 0xFA, 3, [0])
 
 
+# BMS M365 -> g_M365
 def getM365BMS():
     m365_send(3, 0x22, 0x01, 0, [len(g_M365BMS)])
     d = m365_recv()
     g_M365BMS.unpack(d['data'])
 
+# g_M365 -> BMS M365
 def putM365BMS():
     d = g_M365BMS.pack()
     m365_send(2 + len(g_M365BMS), 0x22, 0x03, 0, list(d))
 
 
+# BMS g_Debug = <enable>
 def debug(enable):
     on = 1 if enable else 0
     m365_send(3, 0x22, 0xFA, 4, [on])
 
+# call debug_print() on BMS
 def debug_print():
     m365_send(3, 0x22, 0xFA, 5, [0])
 
 
+# DISCHG & CHG FET OFF
+def disable():
+    m365_send(3, 0x22, 0xFA, 6, [0])
+
+# DISCHG & CHG FET ON
+def enable():
+    m365_send(3, 0x22, 0xFA, 7, [0])
+
+
+
 recvT = RecvThread()
 recvT.start()
-

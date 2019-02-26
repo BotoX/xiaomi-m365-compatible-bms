@@ -11,17 +11,34 @@
 M365BMS g_M365BMS;
 BMSSettings g_Settings;
 
-bool g_Debug = false;
+bool g_Debug = true;
 // I2CAddress = 0x08, crcEnabled = true
 bq769x0 g_BMS(bq76940, 0x08, true);
 volatile bool g_interruptFlag = false;
 unsigned long g_lastActivity = 0;
 unsigned long g_lastUpdate = 0;
 
+extern volatile unsigned long timer0_millis;
+volatile unsigned int g_timer2Overflows = 0;
+
 void alertISR()
 {
     g_BMS.setAlertInterruptFlag();
     g_interruptFlag = true;
+}
+
+void uartRxISR()
+{
+    g_lastActivity = millis();
+}
+
+ISR(TIMER2_OVF_vect)
+{
+    // only used to keep track of time while sleeping to adjust millis()
+    g_timer2Overflows++;
+    // so go to sleep immediately and don't wake/continue main loop
+    interrupts();
+    sleep_cpu();
 }
 
 void setup()
@@ -32,30 +49,34 @@ void setup()
     power_adc_disable();
     power_spi_disable();
     power_timer1_disable();
-    power_timer2_disable();
     power_twi_disable();
     delay(100);
-
-    // Disable TX
-    UCSR0B &= ~(1 << TXEN0);
 
     loadSettings();
 
     g_BMS.begin(BMS_BOOT_PIN);
+    g_BMS.setThermistors(0b110);
 
     applySettings();
 
     // attach ALERT interrupt
     pinMode(BMS_ALERT_PIN, INPUT);
     attachPCINT(digitalPinToPCINT(BMS_ALERT_PIN), alertISR, RISING);
+
+    // attach UART RX pin interrupt to wake from deep sleep
+    attachPCINT(digitalPinToPCINT(0), uartRxISR, CHANGE);
+    disablePCINT(digitalPinToPCINT(0));
+
     interrupts();
 
-    delay(250);
+    delay(1000);
     g_BMS.update();
     g_BMS.resetSOC(100);
 
     g_BMS.enableDischarging();
     g_BMS.enableCharging();
+
+    g_Debug = false;
 }
 
 
@@ -105,11 +126,13 @@ void applySettings()
     else
         g_BMS.disableAutoBalancing();
 
+    g_BMS.setBalanceCharging(true);
+
     g_BMS.adjADCPackOffset(g_Settings.adcPackOffset);
     g_BMS.adjADCCellsOffset(g_Settings.adcCellsOffset);
 
     strncpy(g_M365BMS.serial, g_Settings.serial, sizeof(g_M365BMS.serial));
-    g_M365BMS.design_capacity = g_M365BMS.unk_capacity = g_Settings.capacity;
+    g_M365BMS.design_capacity = g_M365BMS.real_capacity = g_Settings.capacity;
     g_M365BMS.nominal_voltage = g_Settings.nominal_voltage;
     g_M365BMS.date = g_Settings.date;
     g_M365BMS.num_cycles = g_Settings.num_cycles;
@@ -120,10 +143,8 @@ void applySettings()
 void onNinebotMessage(NinebotMessage &msg)
 {
     g_lastActivity = millis();
-    if(!(UCSR0B & (1 << TXEN0))) {
-        // Enable TX
-        UCSR0B |= (1 << TXEN0);
-    }
+    // Enable TX
+    UCSR0B |= (1 << TXEN0);
 
     if(msg.addr != M365BMS_RADDR)
         return;
@@ -357,9 +378,16 @@ void loop()
         {
             // charging state
             if(g_BMS.getBatteryCurrent() > (int16_t)g_Settings.idle_currentThres)
-                g_M365BMS.status |= 64;
+                g_M365BMS.status |= (1 << 6); // charging
             else if(g_BMS.getBatteryCurrent() < (int16_t)g_Settings.idle_currentThres / 2)
-                g_M365BMS.status &= ~64;
+                g_M365BMS.status &= ~(1 << 6);
+
+            if(error & STAT_OV) {
+                g_M365BMS.status |= (1 << 9); // overvoltage
+                error &= ~STAT_OV;
+            }
+            else
+                g_M365BMS.status &= ~(1 << 9);
 
             uint16_t batVoltage = g_BMS.getBatteryVoltage() / 10;
             if(batVoltage > g_M365BMS.max_voltage)
@@ -378,19 +406,24 @@ void loop()
             g_M365BMS.temperature[0] = g_BMS.getTemperatureDegC(1) + 20.0;
             g_M365BMS.temperature[1] = g_BMS.getTemperatureDegC(2) + 20.0;
 
+            if(g_BMS.getHighestTemperature() > (g_Settings.temp_maxDischargeC - 3) * 10)
+                g_M365BMS.status |= (1 << 10); // overheat
+            else
+                g_M365BMS.status &= ~(1 << 10);
+
             if(g_BMS.batCycles_) {
+                g_M365BMS.num_cycles += g_BMS.batCycles_;
                 g_BMS.batCycles_ = 0;
-                g_M365BMS.num_cycles = ++g_Settings.num_cycles;
                 EEPROM.put(0, g_Settings);
             }
 
             if(g_BMS.chargedTimes_) {
+                g_M365BMS.num_charged += ++g_Settings.num_charged;
                 g_BMS.chargedTimes_ = 0;
-                g_M365BMS.num_charged = ++g_Settings.num_charged;
             }
 
-            byte numCells = g_BMS.getNumberOfConnectedCells();
-            for(byte i = 0; i < numCells; i++)
+            uint8_t numCells = g_BMS.getNumberOfConnectedCells();
+            for(uint8_t i = 0; i < numCells; i++)
                 g_M365BMS.cell_voltages[i] = g_BMS.getCellVoltage(i);
 
             // cell voltage difference too big
@@ -407,11 +440,40 @@ void loop()
 
     ninebotRecv();
 
-    if((unsigned long)(now - g_lastActivity) >= 1000) {
-        if(!g_Debug && UCSR0B & (1 << TXEN0)) {
-            // Disable TX
-            UCSR0B &= ~(1 << TXEN0);
-        }
+    if((unsigned long)(now - g_lastActivity) >= 1000 && !g_Debug)
+    {
+        // Disable TX
+        UCSR0B &= ~(1 << TXEN0);
+
+        // go into deep sleep, will wake up every 250ms by BQ769x0 ALERT or from USART1 RX (first byte will be lost)
+        noInterrupts();
+        set_sleep_mode(SLEEP_MODE_PWR_SAVE);
+
+        // Timer/Counter2 8-byte OVF 8MHz /1024 = 32.64ms
+        TCCR2A = 0;
+        TCCR2B = (1<<CS22)|(1<<CS21)|(1<<CS20);
+        TCNT2 = 0;
+        TIMSK2 = (1<<TOIE2);
+
+        enablePCINT(digitalPinToPCINT(0));
+        UCSR0B &= ~(1 << RXEN0); // Disable RX
+
+        sleep_enable();
+        interrupts();
+        sleep_cpu();
+        sleep_disable();
+
+        // Disable Timer/Counter2 and add elapsed time to Arduinos 'timer0_millis'
+        TCCR2B = 0;
+        TIMSK2 = 0;
+        float elapsed_time = g_timer2Overflows * 32.64 + TCNT2 * 32.64 / 255.0;
+        timer0_millis += (unsigned long)elapsed_time;
+        g_timer2Overflows = 0;
+
+        disablePCINT(digitalPinToPCINT(0));
+        UCSR0B |= (1 << RXEN0); // Enable RX
+
+        interrupts();
     }
 }
 
@@ -486,5 +548,12 @@ void debug_print()
     Serial.println(g_BMS.errorCounter_[ERROR_SCD]);
     Serial.print(F("OCD errors: "));
     Serial.println(g_BMS.errorCounter_[ERROR_OCD]);
+    Serial.println();
+    Serial.print(F("DISCHG TEMP errors: "));
+    Serial.println(g_BMS.errorCounter_[ERROR_USER_DISCHG_TEMP]);
+    Serial.print(F("CHG TEMP errors: "));
+    Serial.println(g_BMS.errorCounter_[ERROR_USER_CHG_TEMP]);
+    Serial.print(F("CHG OCD errors: "));
+    Serial.println(g_BMS.errorCounter_[ERROR_USER_CHG_OCD]);
 }
 #endif

@@ -17,7 +17,6 @@
 #include <Arduino.h>
 #include <math.h>     // log for thermistor calculation
 #include "main.h"
-#include "bq769x0_registers.h"
 #include "bq769x0.h"
 
 /* Software I2C */
@@ -62,22 +61,27 @@ uint8_t _crc8_ccitt_update (uint8_t inCrc, uint8_t inData)
 
 bq769x0::bq769x0(uint8_t bqType, uint8_t bqI2CAddress, bool crc)
 {
+    memset(this, 0, sizeof(*this));
+
     // set some safe default values
-    autoBalancingEnabled_ = false;
-    balancingMinIdleTime_s_ = 1800;    // default: 30 minutes
-    idleCurrentThreshold_ = 30; // mA
-    nominalVoltage_ = 3600; // mV
-    thermistorBetaValue_ = 3435;  // typical value for Semitec 103AT-5 thermistor
+    setBatteryCapacity(0);
+    setShuntResistorValue();
+    setThermistorBetaValue();
+    setBalancingThresholds();
+    setIdleCurrentThreshold();
 
     alertInterruptFlag_ = true;   // init with true to check and clear errors at start-up
 
     type_ = bqType;
     if (type_ == bq76920) {
         numberOfCells_ = 5;
+        setThermistors(0b001);
     } else if (type_ == bq76930) {
         numberOfCells_ = 10;
+        setThermistors(0b011);
     } else {
         numberOfCells_ = 15;
+        setThermistors(0b111);
     }
 
     // prevent errors if someone reduced MAX_NUMBER_OF_CELLS accidentally
@@ -121,7 +125,7 @@ uint8_t bq769x0::begin(uint8_t bootPin)
 
         #if BQ769X0_DEBUG
         if(g_Debug)
-            Serial.println("BMS communication error");
+            Serial.println(F("BMS communication error"));
         #endif
         delay(250);
     }
@@ -170,13 +174,14 @@ uint8_t bq769x0::checkStatus()
         }
 
         // Serious error occured
-        if (sys_stat.regByte & 0b00111111)
+        if (sys_stat.regByte & STAT_FLAGS)
         {
             errorStatus_ = sys_stat.regByte;
 
             uint32_t secSinceInterrupt = (millis() - interruptTimestamp_) / 1000;
 
-            if (sys_stat.regByte & 0b00100000) { // XR error
+            if (sys_stat.bits.DEVICE_XREADY) { // XR error
+                chargingEnabled_ = dischargingEnabled_ = false;
                 // datasheet recommendation: try to clear after waiting a few seconds
                 if (secSinceInterrupt >= 3) {
                     #if BQ769X0_DEBUG
@@ -184,22 +189,24 @@ uint8_t bq769x0::checkStatus()
                         Serial.println(F("Attempting to clear XR error"));
                     #endif
                     errorCounter_[ERROR_XREADY]++;
-                    writeRegister(SYS_STAT, 0b00100000);
+                    writeRegister(SYS_STAT, STAT_DEVICE_XREADY);
                     enableCharging();
                     enableDischarging();
                 }
             }
-            if (sys_stat.regByte & 0b00010000) { // Alert error
+            if (sys_stat.bits.OVRD_ALERT) { // Alert error
+                chargingEnabled_ = dischargingEnabled_ = false;
                 #if BQ769X0_DEBUG
                 if(g_Debug)
                     Serial.println(F("Attempting to clear Alert error"));
                 #endif
                 errorCounter_[ERROR_ALERT]++;
-                writeRegister(SYS_STAT, 0b00010000);
+                writeRegister(SYS_STAT, STAT_OVRD_ALERT);
                 enableCharging();
                 enableDischarging();
             }
-            if (sys_stat.regByte & 0b00001000) { // UV error
+            if (sys_stat.bits.UV) { // UV error
+                dischargingEnabled_ = false;
                 updateVoltages();
                 if (cellVoltages_[idCellMinVoltage_] > minCellVoltage_) {
                     #if BQ769X0_DEBUG
@@ -207,11 +214,12 @@ uint8_t bq769x0::checkStatus()
                         Serial.println(F("Attempting to clear UV error"));
                     #endif
                     errorCounter_[ERROR_UVP]++;
-                    writeRegister(SYS_STAT, 0b00001000);
+                    writeRegister(SYS_STAT, STAT_UV);
                     enableDischarging();
                 }
             }
-            if (sys_stat.regByte & 0b00000100) { // OV error
+            if (sys_stat.bits.OV) { // OV error
+                chargingEnabled_ = false;
                 updateVoltages();
                 if (cellVoltages_[idCellMaxVoltage_] < maxCellVoltage_) {
                     #if BQ769X0_DEBUG
@@ -219,29 +227,31 @@ uint8_t bq769x0::checkStatus()
                         Serial.println(F("Attempting to clear OV error"));
                     #endif
                     errorCounter_[ERROR_OVP]++;
-                    writeRegister(SYS_STAT, 0b00000100);
+                    writeRegister(SYS_STAT, STAT_OV);
                     enableCharging();
                 }
             }
-            if (sys_stat.regByte & 0b00000010) { // SCD
+            if (sys_stat.bits.SCD) { // SCD
+                dischargingEnabled_ = false;
                 if (secSinceInterrupt >= 10) {
                     #if BQ769X0_DEBUG
                     if(g_Debug)
                         Serial.println(F("Attempting to clear SCD error"));
                     #endif
                     errorCounter_[ERROR_SCD]++;
-                    writeRegister(SYS_STAT, 0b00000010);
+                    writeRegister(SYS_STAT, STAT_SCD);
                     enableDischarging();
                 }
             }
-            if (sys_stat.regByte & 0b00000001) { // OCD
+            if (sys_stat.bits.OCD) { // OCD
+                dischargingEnabled_ = false;
                 if (secSinceInterrupt >= 10) {
                     #if BQ769X0_DEBUG
                     if(g_Debug)
                         Serial.println(F("Attempting to clear OCD error"));
                     #endif
                     errorCounter_[ERROR_OCD]++;
-                    writeRegister(SYS_STAT, 0b00000001);
+                    writeRegister(SYS_STAT, STAT_OCD);
                     enableDischarging();
                 }
             }
@@ -263,6 +273,7 @@ uint8_t bq769x0::update()
     updateVoltages();
     updateTemperatures();
     updateBalancingSwitches();
+    checkUser();
     return ret;
 }
 
@@ -280,28 +291,32 @@ void bq769x0::shutdown()
 
 bool bq769x0::enableCharging()
 {
+    uint8_t status = checkStatus();
     #if BQ769X0_DEBUG
     if(g_Debug) {
-        Serial.print("checkStatus() = ");
-        Serial.println(checkStatus());
-        Serial.print("Umax = ");
+        Serial.print(F("checkStatus() = "));
+        Serial.println(status);
+        Serial.print(F("Umax = "));
         Serial.println(cellVoltages_[idCellMaxVoltage_]);
-        Serial.print("temperatures[1] = ");
-        Serial.println(temperatures_[1]);
+        Serial.print(F("temperatures[min, max] = "));
+        Serial.print(getLowestTemperature());
+        Serial.print(F(", "));
+        Serial.println(getHighestTemperature());
     }
     #endif
 
-    if (checkStatus() == 0 &&
+    if (status == 0 &&
         cellVoltages_[idCellMaxVoltage_] < maxCellVoltage_ &&
-        temperatures_[1] < maxCellTempCharge_ &&
-        temperatures_[1] > minCellTempCharge_)
+        getHighestTemperature() < maxCellTempCharge_ &&
+        getLowestTemperature() > minCellTempCharge_)
     {
         int sys_ctrl2;
         sys_ctrl2 = readRegister(SYS_CTRL2);
         writeRegister(SYS_CTRL2, sys_ctrl2 | 0b00000001);  // switch CHG on
+        chargingEnabled_ = true;
         #if BQ769X0_DEBUG
         if(g_Debug)
-            Serial.println("Enabling CHG FET");
+            Serial.println(F("Enabling CHG FET"));
         #endif
         return true;
     }
@@ -317,9 +332,10 @@ void bq769x0::disableCharging()
     int sys_ctrl2;
     sys_ctrl2 = readRegister(SYS_CTRL2);
     writeRegister(SYS_CTRL2, sys_ctrl2 & ~0b00000001);  // switch CHG off
+    chargingEnabled_ = false;
     #if BQ769X0_DEBUG
     if(g_Debug)
-        Serial.println("Disabling CHG FET");
+        Serial.println(F("Disabling CHG FET"));
     #endif
 }
 
@@ -327,28 +343,32 @@ void bq769x0::disableCharging()
 
 bool bq769x0::enableDischarging()
 {
+    uint8_t status = checkStatus();
     #if BQ769X0_DEBUG
     if(g_Debug) {
-        Serial.print("checkStatus() = ");
-        Serial.println(checkStatus());
-        Serial.print("Umin = ");
+        Serial.print(F("checkStatus() = "));
+        Serial.println(status);
+        Serial.print(F("Umin = "));
         Serial.println(cellVoltages_[idCellMinVoltage_]);
-        Serial.print("temperatures[1] = ");
-        Serial.println(temperatures_[1]);
+        Serial.print(F("temperatures[min, max] = "));
+        Serial.print(getLowestTemperature());
+        Serial.print(F(", "));
+        Serial.println(getHighestTemperature());
     }
     #endif
 
-    if (checkStatus() == 0 &&
+    if (status == 0 &&
         cellVoltages_[idCellMinVoltage_] > minCellVoltage_ &&
-        temperatures_[1] < maxCellTempDischarge_ &&
-        temperatures_[1] > minCellTempDischarge_)
+        getLowestTemperature() > minCellTempDischarge_ &&
+        getHighestTemperature() < maxCellTempDischarge_)
     {
         int sys_ctrl2;
         sys_ctrl2 = readRegister(SYS_CTRL2);
         writeRegister(SYS_CTRL2, sys_ctrl2 | 0b00000010);  // switch DSG on
+        dischargingEnabled_ = true;
         #if BQ769X0_DEBUG
         if(g_Debug)
-            Serial.println("Enabling DISCHG FET");
+            Serial.println(F("Enabling DISCHG FET"));
         #endif
         return true;
     }
@@ -364,9 +384,10 @@ void bq769x0::disableDischarging()
     int sys_ctrl2;
     sys_ctrl2 = readRegister(SYS_CTRL2);
     writeRegister(SYS_CTRL2, sys_ctrl2 & ~0b00000010);  // switch DSG off
+    dischargingEnabled_ = false;
     #if BQ769X0_DEBUG
     if(g_Debug)
-        Serial.println("Disabling DISCHG FET");
+        Serial.println(F("Disabling DISCHG FET"));
     #endif
 }
 
@@ -408,7 +429,7 @@ void bq769x0::updateBalancingSwitches(void)
 
     // check if balancing allowed
     if (autoBalancingEnabled_ && errorStatus_ == 0 &&
-        idleSeconds >= balancingMinIdleTime_s_ &&
+        ((balanceCharging_ && charging_ == 2) || idleSeconds >= balancingMinIdleTime_s_) &&
         cellVoltages_[idCellMaxVoltage_] > balancingMinCellVoltage_mV_ &&
         (cellVoltages_[idCellMaxVoltage_] - cellVoltages_[idCellMinVoltage_]) > balancingMaxVoltageDifference_mV_)
     {
@@ -460,9 +481,9 @@ void bq769x0::updateBalancingSwitches(void)
 
             #if BQ769X0_DEBUG
             if(g_Debug) {
-                Serial.print("Setting CELLBAL");
+                Serial.print(F("Setting CELLBAL"));
                 Serial.print(section+1);
-                Serial.print(" register to: ");
+                Serial.print(F(" register to: "));
                 Serial.println(byte2char(balancingFlags));
             }
             #endif
@@ -481,7 +502,7 @@ void bq769x0::updateBalancingSwitches(void)
         {
             #if BQ769X0_DEBUG
             if(g_Debug) {
-                Serial.print("Clearing Register CELLBAL");
+                Serial.print(F("Clearing Register CELLBAL"));
                 Serial.println(section+1);
             }
             #endif
@@ -505,6 +526,13 @@ uint16_t bq769x0::getBalancingStatus()
 void bq769x0::setShuntResistorValue(uint32_t res_uOhm)
 {
     shuntResistorValue_uOhm_ = res_uOhm;
+}
+
+//----------------------------------------------------------------------------
+
+void bq769x0::setThermistors(uint8_t bitflag)
+{
+    thermistors_ = bitflag & ((1 << MAX_NUMBER_OF_THERMISTORS) - 1);
 }
 
 //----------------------------------------------------------------------------
@@ -550,11 +578,11 @@ void bq769x0::resetSOC(int percent)
     {
         #if BQ769X0_DEBUG
         if(g_Debug) {
-            Serial.print("NumCells: ");
+            Serial.print(F("NumCells: "));
             Serial.print(getNumberOfConnectedCells());
-            Serial.print(", voltage: ");
+            Serial.print(F(", voltage: "));
             Serial.print(getBatteryVoltage());
-            Serial.println("V");
+            Serial.println(F("V"));
         }
         #endif
         uint16_t voltage = getBatteryVoltage() / getNumberOfConnectedCells();
@@ -623,6 +651,13 @@ void bq769x0::setIdleCurrentThreshold(uint32_t current_mA)
 
 //----------------------------------------------------------------------------
 
+void bq769x0::setBalanceCharging(bool charging)
+{
+    balanceCharging_ = charging;
+}
+
+//----------------------------------------------------------------------------
+
 uint32_t bq769x0::setShortCircuitProtection(uint32_t current_mA, uint16_t delay_us)
 {
     regPROTECT1_t protect1;
@@ -656,7 +691,8 @@ uint32_t bq769x0::setShortCircuitProtection(uint32_t current_mA, uint16_t delay_
 
 uint32_t bq769x0::setOvercurrentChargeProtection(uint32_t current_mA, uint16_t delay_ms)
 {
-    // ToDo: Software protection for charge overcurrent
+    maxChargeCurrent_ = current_mA;
+    maxChargeCurrent_delay_ = delay_ms;
     return 0;
 }
 
@@ -836,6 +872,29 @@ float bq769x0::getTemperatureDegF(uint8_t channel)
     return getTemperatureDegC(channel) * 1.8 + 32;
 }
 
+//----------------------------------------------------------------------------
+
+int16_t bq769x0::getLowestTemperature()
+{
+    int16_t minTemp = INT16_MAX;
+    for(uint8_t i = 0; i < MAX_NUMBER_OF_THERMISTORS; i++)
+    {
+        if(thermistors_ & (1 << i) && temperatures_[i] < minTemp)
+            minTemp = temperatures_[i];
+    }
+    return minTemp;
+}
+
+int16_t bq769x0::getHighestTemperature()
+{
+    int16_t maxTemp = INT16_MIN;
+    for(uint8_t i = 0; i < MAX_NUMBER_OF_THERMISTORS; i++)
+    {
+        if(thermistors_ & (1 << i) && temperatures_[i] > maxTemp)
+            maxTemp = temperatures_[i];
+    }
+    return maxTemp;
+}
 
 //----------------------------------------------------------------------------
 
@@ -917,12 +976,13 @@ void bq769x0::updateCurrent()
                 chargedTimes_++;
             }
         }
-        else
+        else if (charging_ != 2 || batCurrent_ < 10)
             charging_ = 0;
 
         // reset idleTimestamp
         if (abs(batCurrent_) > idleCurrentThreshold_) {
-            idleTimestamp_ = millis();
+            if(batCurrent_ < 0 || !(balanceCharging_ && charging_ == 2))
+                idleTimestamp_ = millis();
         }
 
         // no error occured which caused alert
@@ -1136,6 +1196,75 @@ void bq769x0::setAlertInterruptFlag()
     alertInterruptFlag_ = true;
 }
 
+//----------------------------------------------------------------------------
+// Check custom error conditions like over/under temperature, over charge current
+
+uint8_t bq769x0::checkUser()
+{
+    // charge temperature limits
+    if(getLowestTemperature() < minCellTempCharge_ || getHighestTemperature() > maxCellTempCharge_) {
+        if(chargingEnabled_ && !(userError_ & USER_CHG_TEMP)) {
+            disableCharging();
+            userError_ |= USER_CHG_TEMP;
+            errorCounter_[ERROR_USER_CHG_TEMP]++;
+        }
+    } else if (errorStatus_ == 0 && userError_ & USER_CHG_TEMP) {
+        enableCharging();
+        userError_ &= ~USER_CHG_TEMP;
+    }
+
+    // discharge temperature limits
+    if(getLowestTemperature() < minCellTempDischarge_ || getHighestTemperature() > maxCellTempDischarge_) {
+        if(dischargingEnabled_ && !(userError_ & USER_DISCHG_TEMP)) {
+            disableDischarging();
+            userError_ |= USER_DISCHG_TEMP;
+            errorCounter_[ERROR_USER_DISCHG_TEMP]++;
+        }
+    } else if (errorStatus_ == 0 && userError_ & USER_DISCHG_TEMP) {
+        enableDischarging();
+        userError_ &= ~USER_DISCHG_TEMP;
+    }
+
+    // charge current limit
+    // charge current can also come through discharge FET that we can't turn off (regen on P-)
+    // that's why this looks a bit funky
+    if(batCurrent_ > maxChargeCurrent_)
+    {
+        user_CHGOCD_ReleaseTimestamp_ = 0;
+
+        if(chargingEnabled_ && !(userError_ & USER_CHG_OCD))
+        {
+            if(!user_CHGOCD_TriggerTimestamp_)
+                user_CHGOCD_TriggerTimestamp_ = millis();
+
+            if((millis() - user_CHGOCD_TriggerTimestamp_) > maxChargeCurrent_delay_ || user_CHGOCD_ReleasedNow_) {
+                disableCharging();
+                userError_ |= USER_CHG_OCD;
+                errorCounter_[ERROR_USER_CHG_OCD]++;
+            }
+        }
+    }
+    else
+    {
+        user_CHGOCD_TriggerTimestamp_ = 0;
+        user_CHGOCD_ReleasedNow_ = false;
+
+        if(userError_ & USER_CHG_OCD)
+        {
+            if(!user_CHGOCD_ReleaseTimestamp_)
+                user_CHGOCD_ReleaseTimestamp_ = millis();
+
+            if (errorStatus_ == 0 && (unsigned long)(millis() - user_CHGOCD_ReleaseTimestamp_) > 10UL * 1000UL) {
+                enableCharging();
+                userError_ &= ~USER_CHG_OCD;
+                user_CHGOCD_ReleaseTimestamp_ = 0;
+                user_CHGOCD_ReleasedNow_ = true;
+            }
+        }
+    }
+
+    return userError_;
+}
 
 #if BQ769X0_DEBUG
 
@@ -1184,6 +1313,9 @@ void bq769x0::printRegisters()
     Serial.println(adcGain_);
     Serial.print(F("ADCOFFSET:      "));
     Serial.println(adcOffset_);
+
+    Serial.print(F("USER ERROR:     "));
+    Serial.println(userError_);
 }
 
 #endif

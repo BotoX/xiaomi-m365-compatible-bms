@@ -15,6 +15,7 @@
 #define BMS_ALERT_PIN 17 // 17 = ALERT, PC3, PCINT11
 #define BMS_BOOT_PIN 14 // 14 = BOOT, PC0
 #define BMS_I2C_FET_PIN 8 // 8 = I2C Pull-Up FET Gate, PB0
+#define BMS_K1_PIN 13 // 13 = PB5 = K1 connector
 
 #define M365BMS_RADDR 0x22
 #define M365BMS_WADDR 0x25
@@ -25,7 +26,7 @@ struct M365BMS
 /*20-2D*/   char serial[14] = "";
 /*2E-2F*/   uint16_t version = 0x900; // 0x115 = 1.1.5
 /*30-31*/   uint16_t design_capacity = 0; // mAh
-/*32-33*/   uint16_t unk_capacity = 0; // mAh
+/*32-33*/   uint16_t real_capacity = 0; // mAh
 /*34-35*/   uint16_t nominal_voltage = 0; // mV
 /*36-37*/   uint16_t num_cycles = 0;
 /*38-39*/   uint16_t num_charged = 0;
@@ -35,13 +36,14 @@ struct M365BMS
 /*40-41*/   uint16_t date = 0; // MSB (7 bits year, 4 bits month, 5 bits day) LSB
 /*42-47*/   uint8_t errors[6] = {0};
 /*48-5F*/   uint16_t unk3[12] = {0};
-/*60-61*/   uint16_t status = 1; // 1 set = no error, 64 set = charging
+/*60-61*/   uint16_t status = 1; // b0 = config valid, b6 = charging, b9 = overvoltage, b10 = overheat
 /*62-63*/   uint16_t capacity_left = 0; // mAh
 /*64-65*/   uint16_t percent_left = 0;
 /*66-67*/   int16_t current = 0; // A/100
 /*68-69*/   uint16_t voltage = 0; // V/100
 /*6A-6B*/   uint8_t temperature[2] = {0, 0}; // °C - 20
-/*6C-75*/   uint16_t unk5[5] = {0};
+/*6C-6D*/   uint16_t balance_bits = 0;
+/*6E-75*/   uint16_t unk5[4] = {0};
 /*76-77*/   uint16_t health = 100; // %, <60% = battery bad
 /*78-7F*/   uint16_t unk6[4] = {0};
 /*80-9D*/   uint16_t cell_voltages[15] = {0}; // mV
@@ -83,19 +85,19 @@ struct BMSSettings
     int16_t temp_maxChargeC = 45; // °C
 
     // setShortCircuitProtection
-    uint32_t SCD_current = 60000; // mA
+    uint32_t SCD_current = 80000; // mA
     uint16_t SCD_delay = 200; // us
 
     // setOvercurrentChargeProtection
-    uint32_t OCD_current = 20000; // mA
-    uint16_t OCD_delay = 200; // ms
+    uint32_t OCD_current = 6000; // mA
+    uint16_t OCD_delay = 3000; // ms
 
     // setOvercurrentDischargeProtection
     uint32_t ODP_current = 35000; // mA
-    uint16_t ODP_delay = 320; // ms
+    uint16_t ODP_delay = 1280; // ms
 
     // setCellUndervoltageProtection
-    uint16_t UVP_voltage = 2900; // mV
+    uint16_t UVP_voltage = 2800; // mV
     uint16_t UVP_delay = 2; // s
 
     // setCellOvervoltageProtection
