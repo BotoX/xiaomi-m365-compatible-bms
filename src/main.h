@@ -16,6 +16,7 @@
 #define BMS_BOOT_PIN 14 // 14 = BOOT, PC0
 #define BMS_I2C_FET_PIN 8 // 8 = I2C Pull-Up FET Gate, PB0
 #define BMS_K1_PIN 13 // 13 = PB5 = K1 connector
+#define BMS_VDD_EN_PIN 15 // 15 = PC1 = VDD Enable
 
 #define M365BMS_RADDR 0x22
 #define M365BMS_WADDR 0x25

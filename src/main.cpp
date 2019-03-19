@@ -418,7 +418,7 @@ void loop()
             }
 
             if(g_BMS.chargedTimes_) {
-                g_M365BMS.num_charged += ++g_Settings.num_charged;
+                g_M365BMS.num_charged += g_BMS.chargedTimes_;
                 g_BMS.chargedTimes_ = 0;
             }
 
