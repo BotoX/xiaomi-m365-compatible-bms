@@ -59,6 +59,9 @@ void setup()
 
     applySettings();
 
+    // Bluetooth power pin
+    pinMode(BMS_VDD_EN_PIN, OUTPUT);
+
     // attach ALERT interrupt
     pinMode(BMS_ALERT_PIN, INPUT);
     attachPCINT(digitalPinToPCINT(BMS_ALERT_PIN), alertISR, RISING);
@@ -228,6 +231,13 @@ void onNinebotMessage(NinebotMessage &msg)
             case 7: {
                 g_BMS.enableDischarging();
                 g_BMS.enableCharging();
+            } break;
+
+            case 8: {
+                digitalWrite(BMS_VDD_EN_PIN, LOW);
+            } break;
+            case 9: {
+                digitalWrite(BMS_VDD_EN_PIN, HIGH);
             } break;
         }
     }

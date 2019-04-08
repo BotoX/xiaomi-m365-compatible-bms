@@ -194,7 +194,7 @@ def m365_send(length, addr, mode, offset, data):
     ser.write(send)
 
 def m365_recv():
-    d = g_Queue.get()
+    d = g_Queue.get(True, 1)
     g_Queue.task_done()
     return d
 
@@ -253,6 +253,25 @@ def disable():
 def enable():
     m365_send(3, 0x22, 0xFA, 7, [0])
 
+# Bluetooth power OFF
+def blue_off():
+    m365_send(3, 0x22, 0xFA, 8, [0])
+
+# Bluetooth power ON
+def blue_on():
+    m365_send(3, 0x22, 0xFA, 9, [0])
+
+
+# YOU HAVE TO INSERT THE EMPTY (0) SLOTS YOURSELF !!!
+def calc_cellofs(measured):
+    getM365BMS()
+    bms = g_M365BMS.cell_voltages[:len(measured)]
+    ofs = []
+    for i, a in enumerate(measured):
+        a *= 1000
+        b = bms[i]
+        ofs.append(round(a - b))
+    return ofs
 
 
 recvT = RecvThread()

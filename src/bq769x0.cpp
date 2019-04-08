@@ -1209,8 +1209,8 @@ uint8_t bq769x0::checkUser()
             errorCounter_[ERROR_USER_CHG_TEMP]++;
         }
     } else if (errorStatus_ == 0 && userError_ & USER_CHG_TEMP) {
-        enableCharging();
-        userError_ &= ~USER_CHG_TEMP;
+        if(enableCharging())
+            userError_ &= ~USER_CHG_TEMP;
     }
 
     // discharge temperature limits
@@ -1221,8 +1221,8 @@ uint8_t bq769x0::checkUser()
             errorCounter_[ERROR_USER_DISCHG_TEMP]++;
         }
     } else if (errorStatus_ == 0 && userError_ & USER_DISCHG_TEMP) {
-        enableDischarging();
-        userError_ &= ~USER_DISCHG_TEMP;
+        if(enableDischarging())
+            userError_ &= ~USER_DISCHG_TEMP;
     }
 
     // charge current limit
@@ -1255,10 +1255,11 @@ uint8_t bq769x0::checkUser()
                 user_CHGOCD_ReleaseTimestamp_ = millis();
 
             if (errorStatus_ == 0 && (unsigned long)(millis() - user_CHGOCD_ReleaseTimestamp_) > 10UL * 1000UL) {
-                enableCharging();
-                userError_ &= ~USER_CHG_OCD;
-                user_CHGOCD_ReleaseTimestamp_ = 0;
-                user_CHGOCD_ReleasedNow_ = true;
+                if(enableCharging()) {
+                    userError_ &= ~USER_CHG_OCD;
+                    user_CHGOCD_ReleaseTimestamp_ = 0;
+                    user_CHGOCD_ReleasedNow_ = true;
+                }
             }
         }
     }
