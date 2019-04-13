@@ -546,7 +546,7 @@ void bq769x0::setThermistorBetaValue(uint16_t beta_K)
 
 void bq769x0::setBatteryCapacity(int32_t capacity_mAh, uint16_t nomVoltage_mV, uint16_t fullVoltage_mV)
 {
-    nominalCapacity_ = capacity_mAh * nomVoltage_mV;
+    nominalCapacity_ = capacity_mAh * 60 * 60;
     nominalVoltage_ = nomVoltage_mV;
     fullVoltage_ = fullVoltage_mV;
 }

@@ -145,7 +145,6 @@ void applySettings()
 
 void onNinebotMessage(NinebotMessage &msg)
 {
-    g_lastActivity = millis();
     // Enable TX
     UCSR0B |= (1 << TXEN0);
 
@@ -273,6 +272,8 @@ void ninebotRecv()
 
     while(Serial.available())
     {
+        g_lastActivity = millis();
+
         if(millis() >= begin + 100)
         { // 100ms timeout
             recvd = 0;
@@ -450,7 +451,7 @@ void loop()
 
     ninebotRecv();
 
-    if((unsigned long)(now - g_lastActivity) >= 1000 && !g_Debug)
+    if((unsigned long)(now - g_lastActivity) >= 5000 && !g_Debug)
     {
         // Disable TX
         UCSR0B &= ~(1 << TXEN0);

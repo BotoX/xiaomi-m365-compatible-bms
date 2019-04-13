@@ -42,8 +42,8 @@ Thanks to Oleg for the idea and help.
 
 ## Hardware
 ### Requirements
-* The BMS itself: [SP15SV0001-LLT](https://www.lithiumbatterypcb.com/product/13s-48v-li-ion-battery-pcb-board-54-6v-lithium-bms-with-60a-discharge-current-for-electric-motorcycle-and-e-scooter-protection-2-2-3-2-2-2-2-2/)
-  * 10S - 13S. 30A version is recommended, >30A versions have both sides of the BMS PCB populated with MOSFETs and will not fit in the limited space of the M365.
+* The BMS itself: [SP15SV0001-LLT](https://www.lithiumbatterypcb.com/product/13s-48v-li-ion-battery-pcb-board-54-6v-lithium-bms-with-60a-discharge-current-for-electric-motorcycle-and-e-scooter-protection-2-2-3-2-2-2-2-2/) or on [Aliexpress](https://www.aliexpress.com/item/12S-44-4V-smart-Lithium-li-ion-battery-protection-board-BMS-system-60A-20A-Bluetooth-phone/32976215661.html)
+  * 10S - 12S. 30A version is recommended, >30A versions have both sides of the BMS PCB populated with MOSFETs and will not fit in the limited space of the M365.
 * An ISP programmer with a 6pin ISP cable/adapter, example: [Aliexpress](https://www.aliexpress.com/item/10-Pin-Convert-to-Standard-6-Pin-Adapter-Board-USBASP-USBISP-AVR-Programmer-USB/2055099231.html)
 * Serial UART adapter, sold by the BMS shop or on [Aliexpress](https://www.aliexpress.com/item/1PCS-CP2102-USB-2-0-to-TTL-UART-Module-6Pin-Serial-Converter-STC-Replace-FT232/32717057832.html)
 

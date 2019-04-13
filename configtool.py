@@ -177,8 +177,9 @@ class RecvThread(threading.Thread):
                         break
 
 def m365_send(length, addr, mode, offset, data):
-    ser.write(0x55) # Wake
-    time.sleep(0.05)
+    for i in range(5):
+        ser.write(0xFF) # Wake
+        time.sleep(0.01)
 
     arg = [length, addr, mode, offset]
     arg.extend(data)
