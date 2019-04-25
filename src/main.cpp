@@ -17,9 +17,11 @@ bq769x0 g_BMS(bq76940, 0x08, true);
 volatile bool g_interruptFlag = false;
 unsigned long g_lastActivity = 0;
 unsigned long g_lastUpdate = 0;
+volatile bool g_uartRxInterrupted = false;
 
 extern volatile unsigned long timer0_millis;
 volatile unsigned int g_timer2Overflows = 0;
+volatile bool g_timer2Flag = false;
 
 void alertISR()
 {
@@ -29,16 +31,14 @@ void alertISR()
 
 void uartRxISR()
 {
-    g_lastActivity = millis();
+    g_uartRxInterrupted = true;
 }
 
 ISR(TIMER2_OVF_vect)
 {
     // only used to keep track of time while sleeping to adjust millis()
     g_timer2Overflows++;
-    // so go to sleep immediately and don't wake/continue main loop
-    interrupts();
-    sleep_cpu();
+    g_timer2Flag = true;
 }
 
 void setup()
@@ -466,12 +466,16 @@ void loop()
         TCNT2 = 0;
         TIMSK2 = (1<<TOIE2);
 
-        enablePCINT(digitalPinToPCINT(0));
         UCSR0B &= ~(1 << RXEN0); // Disable RX
+        enablePCINT(digitalPinToPCINT(0));
 
         sleep_enable();
         interrupts();
-        sleep_cpu();
+        do // go to sleep if it's just timer2 that woke us up
+        {
+            g_timer2Flag = false;
+            sleep_cpu();
+        } while(g_timer2Flag);
         sleep_disable();
 
         // Disable Timer/Counter2 and add elapsed time to Arduinos 'timer0_millis'
@@ -480,6 +484,10 @@ void loop()
         float elapsed_time = g_timer2Overflows * 32.64 + TCNT2 * 32.64 / 255.0;
         timer0_millis += (unsigned long)elapsed_time;
         g_timer2Overflows = 0;
+
+        if(g_uartRxInterrupted)
+            g_lastActivity = millis();
+        g_uartRxInterrupted = false;
 
         disablePCINT(digitalPinToPCINT(0));
         UCSR0B |= (1 << RXEN0); // Enable RX
