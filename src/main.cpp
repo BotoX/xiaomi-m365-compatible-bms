@@ -4,6 +4,7 @@
 
 #include <avr/sleep.h>
 #include <avr/power.h>
+#include <avr/wdt.h>
 
 #include "bq769x0.h"
 #include "main.h"
@@ -18,31 +19,35 @@ volatile bool g_interruptFlag = false;
 unsigned long g_lastActivity = 0;
 unsigned long g_lastUpdate = 0;
 volatile bool g_uartRxInterrupted = false;
+volatile bool g_wakeupFlag = false;
 
 extern volatile unsigned long timer0_millis;
 volatile unsigned int g_timer2Overflows = 0;
-volatile bool g_timer2Flag = false;
 
 void alertISR()
 {
     g_BMS.setAlertInterruptFlag();
     g_interruptFlag = true;
+    g_wakeupFlag = true;
 }
 
 void uartRxISR()
 {
     g_uartRxInterrupted = true;
+    g_wakeupFlag = true;
 }
 
 ISR(TIMER2_OVF_vect)
 {
     // only used to keep track of time while sleeping to adjust millis()
     g_timer2Overflows++;
-    g_timer2Flag = true;
 }
 
 void setup()
 {
+    MCUSR = 0;
+    wdt_disable();
+
     Serial.begin(76800);
     Serial.println(F("BOOTED!"));
 
@@ -50,7 +55,7 @@ void setup()
     power_spi_disable();
     power_timer1_disable();
     power_twi_disable();
-    delay(100);
+    delay(1000);
 
     loadSettings();
 
@@ -80,6 +85,8 @@ void setup()
     g_BMS.enableCharging();
 
     g_Debug = false;
+
+    wdt_enable(WDTO_1S);
 }
 
 
@@ -87,7 +94,7 @@ void loadSettings()
 {
     if(EEPROM.read(0) != g_Settings.header[0] || EEPROM.read(1) != g_Settings.header[1])
     {
-        for(uint16_t i = 0 ; i < EEPROM.length() ; i++) {
+        for(uint16_t i = 0; i < EEPROM.length(); i++) {
             EEPROM.write(i, 0);
         }
         EEPROM.put(0, g_Settings);
@@ -238,6 +245,19 @@ void onNinebotMessage(NinebotMessage &msg)
             case 9: {
                 digitalWrite(BMS_VDD_EN_PIN, HIGH);
             } break;
+            case 10: {
+                // test watchdog
+                for (;;) { (void)0; }
+            } break;
+            case 11: {
+                // restart to bootloader
+                typedef void (*do_reboot_t)(void);
+                const do_reboot_t do_reboot = (do_reboot_t)((FLASHEND - 511) >> 1);
+                wdt_disable();
+                cli(); TCCR0A = TCCR1A = TCCR2A = 0; // make sure interrupts are off and timers are reset.
+                MCUSR = 0;
+                do_reboot();
+            }
         }
     }
 }
@@ -377,7 +397,7 @@ void ninebotRecv()
 void loop()
 {
     unsigned long now = millis();
-    if(g_interruptFlag || (unsigned long)(now - g_lastUpdate) >= 1000)
+    if(g_interruptFlag || (unsigned long)(now - g_lastUpdate) >= 500)
     {
         if(g_interruptFlag)
             g_interruptFlag = false;
@@ -469,13 +489,15 @@ void loop()
         UCSR0B &= ~(1 << RXEN0); // Disable RX
         enablePCINT(digitalPinToPCINT(0));
 
+        wdt_reset();
+        g_wakeupFlag = false;
+
         sleep_enable();
         interrupts();
-        do // go to sleep if it's just timer2 that woke us up
+        do // go to sleep if it's just timer2 that woke us up (unless we were idle for longer than 500ms)
         {
-            g_timer2Flag = false;
             sleep_cpu();
-        } while(g_timer2Flag);
+        } while(!g_wakeupFlag && g_timer2Overflows < 16);
         sleep_disable();
 
         // Disable Timer/Counter2 and add elapsed time to Arduinos 'timer0_millis'
@@ -494,6 +516,8 @@ void loop()
 
         interrupts();
     }
+
+    wdt_reset();
 }
 
 #if BQ769X0_DEBUG

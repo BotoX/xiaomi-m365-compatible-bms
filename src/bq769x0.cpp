@@ -134,6 +134,11 @@ uint8_t bq769x0::begin(uint8_t bootPin)
     writeRegister(SYS_CTRL1, 0b00011000);  // switch external thermistor and ADC on
     writeRegister(SYS_CTRL2, 0b01000000);  // switch CC_EN on
 
+    // reset balance registers just in case
+    writeRegister(CELLBAL1, 0x0);
+    writeRegister(CELLBAL2, 0x0);
+    writeRegister(CELLBAL3, 0x0);
+
     // get ADC offset and gain
     adcOffset_ = readRegister(ADCOFFSET);
     adcGain_ = 365 + (((readRegister(ADCGAIN1) & 0b00001100) << 1) |

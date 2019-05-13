@@ -8,7 +8,8 @@ from binascii import hexlify
 import cstruct
 
 g_Running = True
-ser = serial.Serial('/dev/ttyUSB0', 76800)
+COMPORT = sys.argv[1] if len(sys.argv) > 1 else '/dev/ttyUSB0'
+ser = serial.Serial(COMPORT, 76800)
 
 cstruct.typedef("uint8", "uint8_t")
 cstruct.typedef("int8", "int8_t")
@@ -262,6 +263,13 @@ def blue_off():
 def blue_on():
     m365_send(3, 0x22, 0xFA, 9, [0])
 
+# Hangs the BMS software and relies on watchdog to rest it
+def watchdog_test():
+    m365_send(3, 0x22, 0xFA, 10, [0])
+
+# Reboots to bootloader
+def bootloader():
+    m365_send(3, 0x22, 0xFA, 11, [0])
 
 # YOU HAVE TO INSERT THE EMPTY (0) SLOTS YOURSELF !!!
 def calc_cellofs(measured):
