@@ -27,7 +27,11 @@ Materials I used:
   - Good price/performance: [Samsung INR18650-29E](https://eu.nkon.nl/samsung-inr18650-29e.html)
 - Charger: Mean Well HLG-240H-48A or ELG-240-48A
   - I paid 45€ for it at [getgoods.com](https://www.getgoods.com/products/442045/Mean-Well-HLG-240H-48A-LED-driver-LED-transformer-Constant-voltage-Constant-current-240-W-5-A-48-Vdc-PFC-circuit-Surge.html) but pricing seems to vary a lot by country.
+  - Both Mean Well HLG-240H-48A and ELG-240-48A allow you to set the max current and voltage.
+    - I charge with 4A (1A per cell) and to 4.1V per cell for better cycle life.
   - Look for another CC/CV power supply if this one is too expensive.
+    - Keep in mind that the chager output voltage has to be adjustable to 49.2V (50.4V if you plan on running 4.2V per cell).
+  
 
 
 ## The caveat
