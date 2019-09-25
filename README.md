@@ -59,7 +59,7 @@ A simple fix for this is to simply remove some of the 4mOhm resistors so that on
 And to fix the shunt voltage from getting cut in half two more small resistors are removed from the top layer, as in the pictures: [Bottom](https://cloud.botox.bz/s/J6oZWqJDikzpTw8/preview) and [Top](https://cloud.botox.bz/s/2ipzTsJNWQ222TH/preview).
 
 #### Current Shunt Resistors Calibration
-One way to calibrate the BMS to know the exact current: While measuring the charging current with a calibrated multimeter you can query the RAW current value via configtool.py using debug_print() command. E.g. i measured 4,1169A Charging current and read a Raw value of 445. Now we make some calculations: R[uOhm]  = RAW Value * 8440 / A[mA]. i.e. 445 * 8440 / 4116,9 = 911,69. So we have a calculated value of 911,69uOhm and now we can change the settings for g_Settings.shuntResistor_uOhm to 912. [Please refer to Software/Configuration](###Configuration)
+One way to calibrate the BMS to know the exact current: While measuring the charging current with a calibrated multimeter you can query the RAW current value via configtool.py using debug_print() command. E.g. i measured 4,1169A Charging current and read a Raw value of 445. Now we make some calculations: R[uOhm]  = RAW Value * 8440 / A[mA]. i.e. 445 * 8440 / 4116,9 = 911,69. So we have a calculated value of 911,69uOhm and now we can change the settings for g_Settings.shuntResistor_uOhm to 912. [Please refer to Software/Configuration](#Configuration)
 
 ### Wiring
 #### IMPORTANT: The M365 ESC - connects to P- of the BMS!
