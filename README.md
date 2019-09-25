@@ -143,3 +143,4 @@ If you break anything it's your own fault.
 **Works for me™.** is the only guarantee I can give you.
 
 I am in no way affiliated with the company that makes the BMS. I just bought it, reversed some stuff and made this firmware.
+ 
