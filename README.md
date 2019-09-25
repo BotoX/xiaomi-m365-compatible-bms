@@ -4,7 +4,7 @@
 
 This repository contains alternative firmware for the following BMS hardware: [SP15SV0001-LLT](https://www.lithiumbatterypcb.com/product/13s-48v-li-ion-battery-pcb-board-54-6v-lithium-bms-with-60a-discharge-current-for-electric-motorcycle-and-e-scooter-protection-2-2-3-2-2-2-2-2/).  
 It's programmed with the [Arduino](https://www.arduino.cc/) platform and is built with [PlatformIO](https://platformio.org/).  
-It runs on an ATMega328p MCU and controls a TI BQ769x0 battery monitoring IC over I²C.
+It runs on an ATMega328p MCU and controls a TI BQ769x0 [TI Datasheet](http://www.ti.com/lit/ds/symlink/bq76940.pdf) battery monitoring IC over I²C.
 
 This is a fully fledged replacement BMS for the Xiaomi M365 that implements their proprietary BMS protocol and supports all of the features you'd expect, like:
 
@@ -57,6 +57,9 @@ By default the BMS comes with ten 4mOhm shunt resistors in parallel. This result
 
 A simple fix for this is to simply remove some of the 4mOhm resistors so that only four resistors are left. Thus the shunt resistance will be 1mOhm.  
 And to fix the shunt voltage from getting cut in half two more small resistors are removed from the top layer, as in the pictures: [Bottom](https://cloud.botox.bz/s/J6oZWqJDikzpTw8/preview) and [Top](https://cloud.botox.bz/s/2ipzTsJNWQ222TH/preview).
+
+#### Current Shunt Resistors Calibration
+One way to calibrate the BMS to know the exact current: While measuring the charging current with a calibrated multimeter you can query the RAW current value via configtool.py using debug_print() command. E.g. i measured 4,1169A Charging current and read a Raw value of 445. Now we make some calculations: R[uOhm]  = RAW Value * 8440 / A[mA]. i.e. 445 * 8440 / 4116,9 = 911,69. So we have a calculated value of 911,69uOhm and now we can change the settings for g_Settings.shuntResistor_uOhm to 912. [Please refer to Software/Configuration](### Configuration)
 
 ### Wiring
 #### IMPORTANT: The M365 ESC - connects to P- of the BMS!
