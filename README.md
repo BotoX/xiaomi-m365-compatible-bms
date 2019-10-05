@@ -98,7 +98,8 @@ Here's the pinout of the ISP header: [Image](https://cloud.botox.bz/s/qGa7rS6Ktt
 On the new V1.5 PCB it's a little trickier: [Image1](https://cloud.botox.bz/s/eYmBCM4Z44P84tj/preview) [Image2](https://cloud.botox.bz/s/7BkSS7NKk878B4d/preview)
 
 Flash the bootloader with [AVRDUDE](https://download.savannah.gnu.org/releases/avrdude/avrdude-6.3-mingw32.zip) using the following command: `avrdude -patmega328p -cstk500v2 -P/dev/ttyUSB0 -U lfuse:w:0xE2:m -U hfuse:w:0xDE:m -U efuse:w:0xFD:m -U lock:w:0xFF:m -U flash:w:optiboot_atmega328.hex`  
-Adjust the `-P/dev/ttyUSB0` part to the correct COM port on your PC.
+* Adjust the `-P/dev/ttyUSB0` part to the correct COM port on your PC.
+* Please pay attention to the FUSES, the above values are for the BMS Versions with internal 8MHz Resonator. For the newer ones with external 8MHz Oscillator you should use 0xFF for the low-Fuse.
 
 ### Uploading/Updating firmware
 You can upload the firmware in platformio, there's a little arrow somewhere.  
