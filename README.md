@@ -4,7 +4,7 @@
 
 This repository contains alternative firmware for the following BMS hardware: [SP15SV0001-LLT](https://www.lithiumbatterypcb.com/product/13s-48v-li-ion-battery-pcb-board-54-6v-lithium-bms-with-60a-discharge-current-for-electric-motorcycle-and-e-scooter-protection-2-2-3-2-2-2-2-2/).  
 It's programmed with the [Arduino](https://www.arduino.cc/) platform and is built with [PlatformIO](https://platformio.org/).  
-It runs on an ATMega328p MCU and controls a TI BQ769x0 battery monitoring IC over I²C.
+It runs on an ATMega328p MCU and controls a TI BQ769x0 ([TI Datasheet](http://www.ti.com/lit/ds/symlink/bq76940.pdf)) battery monitoring IC over I²C.
 
 This is a fully fledged replacement BMS for the Xiaomi M365 that implements their proprietary BMS protocol and supports all of the features you'd expect, like:
 
@@ -58,6 +58,20 @@ By default the BMS comes with ten 4mOhm shunt resistors in parallel. This result
 A simple fix for this is to simply remove some of the 4mOhm resistors so that only four resistors are left. Thus the shunt resistance will be 1mOhm.  
 And to fix the shunt voltage from getting cut in half two more small resistors are removed from the top layer, as in the pictures: [Bottom](https://cloud.botox.bz/s/J6oZWqJDikzpTw8/preview) and [Top](https://cloud.botox.bz/s/2ipzTsJNWQ222TH/preview).
 
+#### Current Shunt Resistors Calibration
+One way to calibrate the BMS to know the exact current:
+
+While measuring the charging current with a calibrated multimeter you can query the RAW current value via configtool.py using debug_print() command.
+Now we make some calculations: ```R[uOhm]  = RAW Value * 8440 / A[mA]```.
+
+ An example:
+  * measured 4,1169A charging current
+  * raw value of 445
+  * Results in ```R =  445 * 8440 / 4116,9 = 911,69```
+  * used in Settings: ```g_Settings.shuntResistor_uOhm = 912```. 
+
+_Please refer to [Software/Configuration](#Configuration) on how to get, change, put, apply and save Settings for the BMS._
+
 ### Wiring
 #### IMPORTANT: The M365 ESC - connects to P- of the BMS!
 **Otherwise the M365 will be damaged when you brake with a full battery due to overvoltage!**
@@ -94,8 +108,18 @@ Connect your ISP programmer to the BMS, you can (and should) keep the battery di
 Here's the pinout of the ISP header: [Image](https://cloud.botox.bz/s/qGa7rS6Ktt4pG24/preview)  
 On the new V1.5 PCB it's a little trickier: [Image1](https://cloud.botox.bz/s/eYmBCM4Z44P84tj/preview) [Image2](https://cloud.botox.bz/s/7BkSS7NKk878B4d/preview)
 
-Flash the bootloader with [AVRDUDE](https://download.savannah.gnu.org/releases/avrdude/avrdude-6.3-mingw32.zip) using the following command: `avrdude -patmega328p -cstk500v2 -P/dev/ttyUSB0 -U lfuse:w:0xE2:m -U hfuse:w:0xDE:m -U efuse:w:0xFD:m -U lock:w:0xFF:m -U flash:w:optiboot_atmega328.hex`  
-Adjust the `-P/dev/ttyUSB0` part to the correct COM port on your PC.
+Choose the correct bootloader file (the MHZ value in the Filename **must** match your hardware)
+
+Choose the correct fuses for your hardware
+* for internal 8MHz Clock use ```-U lfuse:w:0xE2:m -U hfuse:w:0xDE:m -U efuse:w:0xFD:m```
+* for external 8MHz Clock use ```-U lfuse:w:0xFF:m -U hfuse:w:0xDE:m -U efuse:w:0xFD:m```
+* for anything else think twice what values you are using as you can brick your atmega chip with wrong values, use of tools like [AVR Fuse Calculator](http://www.engbedded.com/fusecalc) is recommendet.
+
+Finally flash the bootloader with [AVRDUDE](https://
+download.savannah.gnu.org/releases/avrdude/avrdude-6.3-mingw32.zip) using the following command: `avrdude -patmega328p -cstk500v2 -P/dev/ttyUSB0 -U lfuse:w:0xE2:m -U hfuse:w:0xDE:m -U efuse:w:0xFD:m -U lock:w:0xFF:m -U flash:w:optiboot_atmega328.hex`  
+* Adjust the `-P/dev/ttyUSB0` part to the correct COM port on your PC.
+* Adjust the `-cstk500v2` part to your programmer
+* Adjust the `-U` parts with your fuse values
 
 ### Uploading/Updating firmware
 You can upload the firmware in platformio, there's a little arrow somewhere.  
@@ -110,6 +134,8 @@ Make sure the temperature sensors are plugged in and all wires are connected pro
 B- needs to be connected to the battery -.
 
 Reset the BMS by shorting GND with RST on the ISP header.
+
+Does your Voltmeter only show a too low voltage like 10 or 20 Volt? -> Reset the BMS by shorting GND with RST on the ISP header. The AVR Chip crashed during plugging the balancing connector.
 
 Run `configtool.py /dev/ttyUSB0` in an interactive python shell (IDLE on Windows, `python -i` on Linux) with the correct COM port.  
 You'll probably have to install these two dependencies: [cstruct](https://pypi.org/project/cstruct/) and [pyserial](https://pypi.org/project/pyserial/).  
@@ -138,3 +164,4 @@ If you break anything it's your own fault.
 **Works for me™.** is the only guarantee I can give you.
 
 I am in no way affiliated with the company that makes the BMS. I just bought it, reversed some stuff and made this firmware.
+ 
