@@ -61,7 +61,7 @@ And to fix the shunt voltage from getting cut in half two more small resistors a
 #### Current Shunt Resistors Calibration
 One way to calibrate the BMS to know the exact current:
 
-While measuring the charging current with a calibrated multimeter you can query the RAW current value via configtool.py using debug_print() command.
+While measuring the charging current with a calibrated multimeter you can query the RAW current value via `configtool.py` using `debug_print()` command.
 Now we make some calculations: ```R[uOhm]  = RAW Value * 8440 / A[mA]```.
 
  An example:
@@ -108,23 +108,28 @@ Connect your ISP programmer to the BMS, you can (and should) keep the battery di
 Here's the pinout of the ISP header: [Image](https://cloud.botox.bz/s/qGa7rS6Ktt4pG24/preview)  
 On the new V1.5 PCB it's a little trickier: [Image1](https://cloud.botox.bz/s/eYmBCM4Z44P84tj/preview) [Image2](https://cloud.botox.bz/s/7BkSS7NKk878B4d/preview)
 
-Choose the correct bootloader file (the MHZ value in the Filename **must** match your hardware)
+Choose the correct bootloader file (the MHZ value in the Filename **must** match your hardware, default = 8MHz)
 
 Choose the correct fuses for your hardware
-* for internal 8MHz Clock use ```-U lfuse:w:0xE2:m -U hfuse:w:0xDE:m -U efuse:w:0xFD:m```
-* for external 8MHz Clock use ```-U lfuse:w:0xFF:m -U hfuse:w:0xDE:m -U efuse:w:0xFD:m```
-* for anything else think twice what values you are using as you can brick your atmega chip with wrong values, use of tools like [AVR Fuse Calculator](http://www.engbedded.com/fusecalc) is recommendet.
+* for internal 8MHz Clock use ```-U lfuse:w:0xE2:m -U hfuse:w:0xDE:m -U efuse:w:0xFD:m``` (Hardware version <= 1.5)
+* for external 8MHz Clock use ```-U lfuse:w:0xFF:m -U hfuse:w:0xDE:m -U efuse:w:0xFD:m``` (Hardware version >= 1.6)
+* for anything else think twice what values you are using as you can brick your atmega chip with wrong values, use of tools like [AVR Fuse Calculator](http://www.engbedded.com/fusecalc) is recommended.
 
 Finally flash the bootloader with [AVRDUDE](https://
-download.savannah.gnu.org/releases/avrdude/avrdude-6.3-mingw32.zip) using the following command: `avrdude -patmega328p -cstk500v2 -P/dev/ttyUSB0 -U lfuse:w:0xE2:m -U hfuse:w:0xDE:m -U efuse:w:0xFD:m -U lock:w:0xFF:m -U flash:w:optiboot_atmega328.hex`  
-* Adjust the `-P/dev/ttyUSB0` part to the correct COM port on your PC.
-* Adjust the `-cstk500v2` part to your programmer
+download.savannah.gnu.org/releases/avrdude/avrdude-6.3-mingw32.zip) using the following command: `avrdude -patmega328p -cstk500v2 -P/dev/ttyUSB0 -U lfuse:w:0xE2:m -U hfuse:w:0xDE:m -U efuse:w:0xFD:m -U lock:w:0x3F:m -U flash:w:optiboot_atmega328_8mhz_57600bps.hex`  
+* Adjust the `-P/dev/ttyUSB0` part to the correct COM port on your PC. (Omit for `usbasp`)
+* Adjust the `-cstk500v2` part to your programmer (`-cusbasp` for the [Aliexpress](https://www.aliexpress.com/item/10-Pin-Convert-to-Standard-6-Pin-Adapter-Board-USBASP-USBISP-AVR-Programmer-USB/2055099231.html) example one.)
 * Adjust the `-U` parts with your fuse values
 
 ### Uploading/Updating firmware
 You can upload the firmware in platformio, there's a little arrow somewhere.  
 You have to short the RESET pin to GROUND right before you hit the upload button!  
 For updating firmware you don't have to short the RESET pin but can run `bootloader.py /dev/ttyUSB0` right before you hit upload.
+
+### Optional: Building optiboot yourself
+Clone the [Optiboot repository](https://github.com/Optiboot/optiboot/) and `git apply` this patch: [optiboot.diff](optiboot.diff)
+* 8MHz build: `make atmega328 AVR_FREQ=8000000L PRODUCTION=1 BAUD_RATE=57600 LED_START_FLASHES=0`
+* 16MHz build: `make atmega328 AVR_FREQ=16000000L PRODUCTION=1 BAUD_RATE=115200 LED_START_FLASHES=0`
 
 
 ## Troubleshooting
