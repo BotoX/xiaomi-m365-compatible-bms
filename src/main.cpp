@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <limits.h>
 #include <EEPROM.h>
 #include <PinChangeInterrupt.h>
 
@@ -20,6 +21,9 @@ unsigned long g_lastActivity = 0;
 unsigned long g_lastUpdate = 0;
 volatile bool g_uartRxInterrupted = false;
 volatile bool g_wakeupFlag = false;
+
+unsigned long g_oldMillis = 0;
+int g_millisOverflows = 0;
 
 extern volatile unsigned long timer0_millis;
 volatile unsigned int g_timer2Overflows = 0;
@@ -445,11 +449,13 @@ void loop()
             if(g_BMS.batCycles_) {
                 g_M365BMS.num_cycles += g_BMS.batCycles_;
                 g_BMS.batCycles_ = 0;
+                g_Settings.num_cycles = g_M365BMS.num_cycles;
                 EEPROM.put(0, g_Settings);
             }
 
             if(g_BMS.chargedTimes_) {
                 g_M365BMS.num_charged += g_BMS.chargedTimes_;
+                g_Settings.num_charged = g_M365BMS.num_charged;
                 g_BMS.chargedTimes_ = 0;
             }
 
@@ -467,6 +473,10 @@ void loop()
             else
                 g_M365BMS.status |= 1;
         }
+
+        if(g_oldMillis > now)
+            g_millisOverflows++;
+        g_oldMillis = now;
     }
 
     ninebotRecv();
@@ -525,6 +535,11 @@ void debug_print()
 {
     g_BMS.printRegisters();
     Serial.println(F(""));
+
+    unsigned long uptime = g_millisOverflows * (UINT_MAX / 1000UL);
+    uptime += millis() / 1000;
+    Serial.print(F("uptime: "));
+    Serial.println(uptime);
 
     Serial.print(F("Battery voltage: "));
     Serial.print(g_BMS.getBatteryVoltage());
