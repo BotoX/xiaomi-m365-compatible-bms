@@ -167,7 +167,7 @@ uint8_t bq769x0::checkStatus()
 {
     //  Serial.print("errorStatus: ");
     //  Serial.println(errorStatus);
-    if (alertInterruptFlag_ || errorStatus_)
+    if (alertInterruptFlag_ || errorStatus_.regByte)
     {
         regSYS_STAT_t sys_stat;
         sys_stat.regByte = readRegister(SYS_STAT);
@@ -181,91 +181,167 @@ uint8_t bq769x0::checkStatus()
         // Serious error occured
         if (sys_stat.regByte & STAT_FLAGS)
         {
-            errorStatus_ = sys_stat.regByte;
-
-            uint32_t secSinceInterrupt = (millis() - interruptTimestamp_) / 1000;
-
-            if (sys_stat.bits.DEVICE_XREADY) { // XR error
+            if (!errorStatus_.bits.DEVICE_XREADY && sys_stat.bits.DEVICE_XREADY) { // XR error
                 chargingEnabled_ = dischargingEnabled_ = false;
-                // datasheet recommendation: try to clear after waiting a few seconds
-                if (secSinceInterrupt >= 3) {
-                    #if BQ769X0_DEBUG
-                    if(g_Debug)
-                        Serial.println(F("Attempting to clear XR error"));
-                    #endif
-                    errorCounter_[ERROR_XREADY]++;
-                    writeRegister(SYS_STAT, STAT_DEVICE_XREADY);
-                    enableCharging();
-                    enableDischarging();
-                }
-            }
-            if (sys_stat.bits.OVRD_ALERT) { // Alert error
-                chargingEnabled_ = dischargingEnabled_ = false;
+                chargingDisabled_ |= (1 << ERROR_XREADY);
+                dischargingDisabled_ |= (1 << ERROR_XREADY);
+
+                errorCounter_[ERROR_XREADY]++;
+                errorTimestamps_[ERROR_XREADY] = millis();
                 #if BQ769X0_DEBUG
                 if(g_Debug)
-                    Serial.println(F("Attempting to clear Alert error"));
+                    Serial.println(F("bq769x0 ERROR: XREADY"));
                 #endif
+            }
+            if (!errorStatus_.bits.OVRD_ALERT && sys_stat.bits.OVRD_ALERT) { // Alert error
+                chargingEnabled_ = dischargingEnabled_ = false;
+                chargingDisabled_ |= (1 << ERROR_ALERT);
+                dischargingDisabled_ |= (1 << ERROR_ALERT);
+
                 errorCounter_[ERROR_ALERT]++;
-                writeRegister(SYS_STAT, STAT_OVRD_ALERT);
-                enableCharging();
-                enableDischarging();
+                errorTimestamps_[ERROR_ALERT] = millis();
+                #if BQ769X0_DEBUG
+                if(g_Debug)
+                    Serial.println(F("bq769x0 ERROR: ALERT"));
+                #endif
             }
             if (sys_stat.bits.UV) { // UV error
                 dischargingEnabled_ = false;
-                updateVoltages();
-                if (cellVoltages_[idCellMinVoltage_] > minCellVoltage_) {
-                    #if BQ769X0_DEBUG
-                    if(g_Debug)
-                        Serial.println(F("Attempting to clear UV error"));
-                    #endif
-                    errorCounter_[ERROR_UVP]++;
-                    writeRegister(SYS_STAT, STAT_UV);
-                    enableDischarging();
-                }
+                dischargingDisabled_ |= (1 << ERROR_UVP);
+
+                errorCounter_[ERROR_UVP]++;
+                errorTimestamps_[ERROR_UVP] = millis();
+                #if BQ769X0_DEBUG
+                if(g_Debug)
+                    Serial.println(F("bq769x0 ERROR: UVP"));
+                #endif
             }
             if (sys_stat.bits.OV) { // OV error
-                chargingEnabled_ = false;
-                updateVoltages();
-                if (cellVoltages_[idCellMaxVoltage_] < maxCellVoltage_) {
-                    #if BQ769X0_DEBUG
-                    if(g_Debug)
-                        Serial.println(F("Attempting to clear OV error"));
-                    #endif
-                    errorCounter_[ERROR_OVP]++;
-                    writeRegister(SYS_STAT, STAT_OV);
-                    enableCharging();
-                }
+                dischargingEnabled_ = false;
+                dischargingDisabled_ |= (1 << ERROR_OVP);
+
+                errorCounter_[ERROR_OVP]++;
+                errorTimestamps_[ERROR_OVP] = millis();
+                #if BQ769X0_DEBUG
+                if(g_Debug)
+                    Serial.println(F("bq769x0 ERROR: OVP"));
+                #endif
             }
             if (sys_stat.bits.SCD) { // SCD
                 dischargingEnabled_ = false;
-                if (secSinceInterrupt >= 10) {
-                    #if BQ769X0_DEBUG
-                    if(g_Debug)
-                        Serial.println(F("Attempting to clear SCD error"));
-                    #endif
-                    errorCounter_[ERROR_SCD]++;
-                    writeRegister(SYS_STAT, STAT_SCD);
-                    enableDischarging();
-                }
+                dischargingDisabled_ |= (1 << ERROR_SCD);
+
+                errorCounter_[ERROR_SCD]++;
+                errorTimestamps_[ERROR_SCD] = millis();
+                #if BQ769X0_DEBUG
+                if(g_Debug)
+                    Serial.println(F("bq769x0 ERROR: SCD"));
+                #endif
             }
             if (sys_stat.bits.OCD) { // OCD
                 dischargingEnabled_ = false;
-                if (secSinceInterrupt >= 10) {
-                    #if BQ769X0_DEBUG
-                    if(g_Debug)
-                        Serial.println(F("Attempting to clear OCD error"));
-                    #endif
-                    errorCounter_[ERROR_OCD]++;
-                    writeRegister(SYS_STAT, STAT_OCD);
-                    enableDischarging();
-                }
+                dischargingDisabled_ |= (1 << ERROR_OCD);
+
+                errorCounter_[ERROR_OCD]++;
+                errorTimestamps_[ERROR_OCD] = millis();
+                #if BQ769X0_DEBUG
+                if(g_Debug)
+                    Serial.println(F("bq769x0 ERROR: OCD"));
+                #endif
             }
+
+            errorStatus_.regByte = sys_stat.regByte;
         }
         else {
-            errorStatus_ = 0;
+            errorStatus_.regByte = 0;
         }
     }
-    return errorStatus_;
+    return errorStatus_.regByte;
+}
+
+//----------------------------------------------------------------------------
+// tries to clear errors which have been found by checkStatus()
+
+void bq769x0::clearErrors()
+{
+    if(errorStatus_.bits.DEVICE_XREADY)
+    {
+        // datasheet recommendation: try to clear after waiting a few seconds
+        if((unsigned long)(millis() - errorTimestamps_[ERROR_XREADY]) > 3UL * 1000UL)
+        {
+            #if BQ769X0_DEBUG
+            if(g_Debug)
+                Serial.println(F("Attempting to clear XREADY error"));
+            #endif
+            writeRegister(SYS_STAT, STAT_DEVICE_XREADY);
+            enableCharging(1 << ERROR_XREADY);
+            enableDischarging(1 << ERROR_XREADY);
+            errorStatus_.bits.DEVICE_XREADY = 0;
+        }
+    }
+    if(errorStatus_.bits.OVRD_ALERT)
+    {
+        #if BQ769X0_DEBUG
+        if(g_Debug)
+            Serial.println(F("Attempting to clear ALERT error"));
+        #endif
+        writeRegister(SYS_STAT, STAT_OVRD_ALERT);
+        enableCharging(1 << ERROR_ALERT);
+        enableDischarging(1 << ERROR_ALERT);
+        errorStatus_.bits.OVRD_ALERT = 0;
+    }
+    if(errorStatus_.bits.UV)
+    {
+        if(cellVoltages_[idCellMinVoltage_] > minCellVoltage_)
+        {
+            #if BQ769X0_DEBUG
+            if(g_Debug)
+                Serial.println(F("Attempting to clear UVP error"));
+            #endif
+            writeRegister(SYS_STAT, STAT_UV);
+            enableDischarging(1 << ERROR_UVP);
+            errorStatus_.bits.UV = 0;
+        }
+    }
+    if(errorStatus_.bits.OV)
+    {
+        if(cellVoltages_[idCellMaxVoltage_] < maxCellVoltage_)
+        {
+            #if BQ769X0_DEBUG
+            if(g_Debug)
+                Serial.println(F("Attempting to clear OVP error"));
+            #endif
+            writeRegister(SYS_STAT, STAT_OV);
+            enableCharging(1 << ERROR_OVP);
+            errorStatus_.bits.OV = 0;
+        }
+    }
+    if(errorStatus_.bits.SCD)
+    {
+        if((unsigned long)(millis() - errorTimestamps_[ERROR_SCD]) > 10UL * 1000UL)
+        {
+            #if BQ769X0_DEBUG
+            if(g_Debug)
+                Serial.println(F("Attempting to clear SCD error"));
+            #endif
+            writeRegister(SYS_STAT, STAT_SCD);
+            enableDischarging(1 << ERROR_SCD);
+            errorStatus_.bits.SCD = 0;
+        }
+    }
+    if(errorStatus_.bits.OCD)
+    {
+        if((unsigned long)(millis() - errorTimestamps_[ERROR_OCD]) > 10UL * 1000UL)
+        {
+            #if BQ769X0_DEBUG
+            if(g_Debug)
+                Serial.println(F("Attempting to clear OCD error"));
+            #endif
+            writeRegister(SYS_STAT, STAT_OCD);
+            enableDischarging(1 << ERROR_OCD);
+            errorStatus_.bits.OCD = 0;
+        }
+    }
 }
 
 //----------------------------------------------------------------------------
@@ -278,6 +354,8 @@ uint8_t bq769x0::update()
     updateVoltages();
     updateTemperatures();
     updateBalancingSwitches();
+    if(ret)
+        clearErrors();
     checkUser();
     return ret;
 }
@@ -294,26 +372,11 @@ void bq769x0::shutdown()
 
 //----------------------------------------------------------------------------
 
-bool bq769x0::enableCharging()
+bool bq769x0::enableCharging(uint16_t flag)
 {
-    uint8_t status = checkStatus();
-    #if BQ769X0_DEBUG
-    if(g_Debug) {
-        Serial.print(F("checkStatus() = "));
-        Serial.println(status);
-        Serial.print(F("Umax = "));
-        Serial.println(cellVoltages_[idCellMaxVoltage_]);
-        Serial.print(F("temperatures[min, max] = "));
-        Serial.print(getLowestTemperature());
-        Serial.print(F(", "));
-        Serial.println(getHighestTemperature());
-    }
-    #endif
+    chargingDisabled_ &= ~flag;
 
-    if (status == 0 &&
-        cellVoltages_[idCellMaxVoltage_] < maxCellVoltage_ &&
-        getHighestTemperature() < maxCellTempCharge_ &&
-        getLowestTemperature() > minCellTempCharge_)
+    if(!chargingEnabled_ && !chargingDisabled_)
     {
         int sys_ctrl2;
         sys_ctrl2 = readRegister(SYS_CTRL2);
@@ -326,46 +389,36 @@ bool bq769x0::enableCharging()
         return true;
     }
     else {
-        return false;
+        return chargingEnabled_;
     }
 }
 
 //----------------------------------------------------------------------------
 
-void bq769x0::disableCharging()
+void bq769x0::disableCharging(uint16_t flag)
 {
-    int sys_ctrl2;
-    sys_ctrl2 = readRegister(SYS_CTRL2);
-    writeRegister(SYS_CTRL2, sys_ctrl2 & ~0b00000001);  // switch CHG off
-    chargingEnabled_ = false;
-    #if BQ769X0_DEBUG
-    if(g_Debug)
-        Serial.println(F("Disabling CHG FET"));
-    #endif
+    chargingDisabled_ |= flag;
+
+    if(chargingEnabled_ && chargingDisabled_)
+    {
+        int sys_ctrl2;
+        sys_ctrl2 = readRegister(SYS_CTRL2);
+        writeRegister(SYS_CTRL2, sys_ctrl2 & ~0b00000001);  // switch CHG off
+        chargingEnabled_ = false;
+        #if BQ769X0_DEBUG
+        if(g_Debug)
+            Serial.println(F("Disabling CHG FET"));
+        #endif
+    }
 }
 
 //----------------------------------------------------------------------------
 
-bool bq769x0::enableDischarging()
+bool bq769x0::enableDischarging(uint16_t flag)
 {
-    uint8_t status = checkStatus();
-    #if BQ769X0_DEBUG
-    if(g_Debug) {
-        Serial.print(F("checkStatus() = "));
-        Serial.println(status);
-        Serial.print(F("Umin = "));
-        Serial.println(cellVoltages_[idCellMinVoltage_]);
-        Serial.print(F("temperatures[min, max] = "));
-        Serial.print(getLowestTemperature());
-        Serial.print(F(", "));
-        Serial.println(getHighestTemperature());
-    }
-    #endif
+    dischargingDisabled_ &= ~flag;
 
-    if (status == 0 &&
-        cellVoltages_[idCellMinVoltage_] > minCellVoltage_ &&
-        getLowestTemperature() > minCellTempDischarge_ &&
-        getHighestTemperature() < maxCellTempDischarge_)
+    if(!dischargingEnabled_ && !dischargingDisabled_)
     {
         int sys_ctrl2;
         sys_ctrl2 = readRegister(SYS_CTRL2);
@@ -378,22 +431,27 @@ bool bq769x0::enableDischarging()
         return true;
     }
     else {
-        return false;
+        return dischargingEnabled_;
     }
 }
 
 //----------------------------------------------------------------------------
 
-void bq769x0::disableDischarging()
+void bq769x0::disableDischarging(uint16_t flag)
 {
-    int sys_ctrl2;
-    sys_ctrl2 = readRegister(SYS_CTRL2);
-    writeRegister(SYS_CTRL2, sys_ctrl2 & ~0b00000010);  // switch DSG off
-    dischargingEnabled_ = false;
-    #if BQ769X0_DEBUG
-    if(g_Debug)
-        Serial.println(F("Disabling DISCHG FET"));
-    #endif
+    dischargingDisabled_ |= flag;
+
+    if(dischargingEnabled_ && dischargingDisabled_)
+    {
+        int sys_ctrl2;
+        sys_ctrl2 = readRegister(SYS_CTRL2);
+        writeRegister(SYS_CTRL2, sys_ctrl2 & ~0b00000010);  // switch DSG off
+        dischargingEnabled_ = false;
+        #if BQ769X0_DEBUG
+        if(g_Debug)
+            Serial.println(F("Disabling DISCHG FET"));
+        #endif
+    }
 }
 
 //----------------------------------------------------------------------------
@@ -433,7 +491,7 @@ void bq769x0::updateBalancingSwitches(void)
     }
 
     // check if balancing allowed
-    if (autoBalancingEnabled_ && errorStatus_ == 0 &&
+    if (autoBalancingEnabled_ && errorStatus_.regByte == 0 &&
         ((balanceCharging_ && charging_ == 2) || idleSeconds >= balancingMinIdleTime_s_) &&
         cellVoltages_[idCellMaxVoltage_] > balancingMinCellVoltage_mV_ &&
         (cellVoltages_[idCellMaxVoltage_] - cellVoltages_[idCellMinVoltage_]) > balancingMaxVoltageDifference_mV_)
@@ -1204,30 +1262,36 @@ void bq769x0::setAlertInterruptFlag()
 //----------------------------------------------------------------------------
 // Check custom error conditions like over/under temperature, over charge current
 
-uint8_t bq769x0::checkUser()
+void bq769x0::checkUser()
 {
     // charge temperature limits
-    if(getLowestTemperature() < minCellTempCharge_ || getHighestTemperature() > maxCellTempCharge_) {
-        if(chargingEnabled_ && !(userError_ & USER_CHG_TEMP)) {
-            disableCharging();
-            userError_ |= USER_CHG_TEMP;
+    if(getLowestTemperature() < minCellTempCharge_ || getHighestTemperature() > maxCellTempCharge_)
+    {
+        if(!(chargingDisabled_ & (1 << ERROR_USER_CHG_TEMP)))
+        {
+            disableCharging(1 << ERROR_USER_CHG_TEMP);
             errorCounter_[ERROR_USER_CHG_TEMP]++;
+            errorTimestamps_[ERROR_USER_CHG_TEMP] = millis();
         }
-    } else if (errorStatus_ == 0 && userError_ & USER_CHG_TEMP) {
-        if(enableCharging())
-            userError_ &= ~USER_CHG_TEMP;
+    }
+    else if(chargingDisabled_ & (1 << ERROR_USER_CHG_TEMP))
+    {
+        enableCharging(1 << ERROR_USER_CHG_TEMP);
     }
 
     // discharge temperature limits
-    if(getLowestTemperature() < minCellTempDischarge_ || getHighestTemperature() > maxCellTempDischarge_) {
-        if(dischargingEnabled_ && !(userError_ & USER_DISCHG_TEMP)) {
-            disableDischarging();
-            userError_ |= USER_DISCHG_TEMP;
+    if(getLowestTemperature() < minCellTempDischarge_ || getHighestTemperature() > maxCellTempDischarge_)
+    {
+        if(!(dischargingDisabled_ & (1 << ERROR_USER_DISCHG_TEMP)))
+        {
+            disableDischarging(1 << ERROR_USER_DISCHG_TEMP);
             errorCounter_[ERROR_USER_DISCHG_TEMP]++;
+            errorTimestamps_[ERROR_USER_DISCHG_TEMP] = millis();
         }
-    } else if (errorStatus_ == 0 && userError_ & USER_DISCHG_TEMP) {
-        if(enableDischarging())
-            userError_ &= ~USER_DISCHG_TEMP;
+    }
+    else if(dischargingDisabled_ & (1 << ERROR_USER_DISCHG_TEMP))
+    {
+        enableDischarging(1 << ERROR_USER_DISCHG_TEMP);
     }
 
     // charge current limit
@@ -1237,15 +1301,16 @@ uint8_t bq769x0::checkUser()
     {
         user_CHGOCD_ReleaseTimestamp_ = 0;
 
-        if(chargingEnabled_ && !(userError_ & USER_CHG_OCD))
+        if(chargingEnabled_ && !(chargingDisabled_ & (1 << ERROR_USER_CHG_OCD)))
         {
             if(!user_CHGOCD_TriggerTimestamp_)
                 user_CHGOCD_TriggerTimestamp_ = millis();
 
-            if((millis() - user_CHGOCD_TriggerTimestamp_) > maxChargeCurrent_delay_ || user_CHGOCD_ReleasedNow_) {
-                disableCharging();
-                userError_ |= USER_CHG_OCD;
+            if((millis() - user_CHGOCD_TriggerTimestamp_) > maxChargeCurrent_delay_ || user_CHGOCD_ReleasedNow_)
+            {
+                disableCharging(1 << ERROR_USER_CHG_OCD);
                 errorCounter_[ERROR_USER_CHG_OCD]++;
+                errorTimestamps_[ERROR_USER_CHG_OCD] = millis();
             }
         }
     }
@@ -1254,22 +1319,19 @@ uint8_t bq769x0::checkUser()
         user_CHGOCD_TriggerTimestamp_ = 0;
         user_CHGOCD_ReleasedNow_ = false;
 
-        if(userError_ & USER_CHG_OCD)
+        if(chargingDisabled_ & (1 << ERROR_USER_CHG_OCD))
         {
             if(!user_CHGOCD_ReleaseTimestamp_)
                 user_CHGOCD_ReleaseTimestamp_ = millis();
 
-            if (errorStatus_ == 0 && (unsigned long)(millis() - user_CHGOCD_ReleaseTimestamp_) > 10UL * 1000UL) {
-                if(enableCharging()) {
-                    userError_ &= ~USER_CHG_OCD;
-                    user_CHGOCD_ReleaseTimestamp_ = 0;
-                    user_CHGOCD_ReleasedNow_ = true;
-                }
+            if((unsigned long)(millis() - user_CHGOCD_ReleaseTimestamp_) > 10UL * 1000UL)
+            {
+                enableCharging(1 << ERROR_USER_CHG_OCD);
+                user_CHGOCD_ReleaseTimestamp_ = 0;
+                user_CHGOCD_ReleasedNow_ = true;
             }
         }
     }
-
-    return userError_;
 }
 
 #if BQ769X0_DEBUG
@@ -1320,8 +1382,10 @@ void bq769x0::printRegisters()
     Serial.print(F("ADCOFFSET:      "));
     Serial.println(adcOffset_);
 
-    Serial.print(F("USER ERROR:     "));
-    Serial.println(userError_);
+    Serial.print(F("CHG DIS:        "));
+    Serial.println(chargingDisabled_);
+    Serial.print(F("DISCHG DIS:     "));
+    Serial.println(dischargingDisabled_);
 }
 
 #endif

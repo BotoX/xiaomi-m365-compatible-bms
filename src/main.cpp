@@ -22,6 +22,9 @@ unsigned long g_lastUpdate = 0;
 volatile bool g_uartRxInterrupted = false;
 volatile bool g_wakeupFlag = false;
 
+volatile bool g_K1Flag = false;
+bool g_dischargeEnabled = true;
+
 unsigned long g_oldMillis = 0;
 int g_millisOverflows = 0;
 
@@ -34,6 +37,14 @@ void alertISR()
     g_interruptFlag = true;
     g_wakeupFlag = true;
 }
+
+#ifdef K1SWITCH
+void K1ISR()
+{
+    g_K1Flag = true;
+    g_wakeupFlag = true;
+}
+#endif
 
 void uartRxISR()
 {
@@ -75,6 +86,12 @@ void setup()
     pinMode(BMS_ALERT_PIN, INPUT);
     attachPCINT(digitalPinToPCINT(BMS_ALERT_PIN), alertISR, RISING);
 
+#ifdef K1SWITCH
+    // attach K1 / power switch interrupt
+    pinMode(BMS_K1_PIN, INPUT);
+    attachPCINT(digitalPinToPCINT(BMS_K1_PIN), K1ISR, CHANGE);
+#endif
+
     // attach UART RX pin interrupt to wake from deep sleep
     attachPCINT(digitalPinToPCINT(0), uartRxISR, CHANGE);
     disablePCINT(digitalPinToPCINT(0));
@@ -85,8 +102,13 @@ void setup()
     g_BMS.update();
     g_BMS.resetSOC(100);
 
-    g_BMS.enableDischarging();
+#ifdef K1SWITCH
+    g_dischargeEnabled = !digitalRead(BMS_K1_PIN);
+#endif
+
     g_BMS.enableCharging();
+    if(g_dischargeEnabled)
+        g_BMS.enableDischarging();
 
     g_Debug = false;
 
@@ -249,10 +271,12 @@ void onNinebotMessage(NinebotMessage &msg)
             case 9: {
                 digitalWrite(BMS_VDD_EN_PIN, HIGH);
             } break;
+#if BQ769X0_DEBUG
             case 10: {
                 // test watchdog
                 for (;;) { (void)0; }
             } break;
+#endif
             case 11: {
                 // restart to bootloader
                 typedef void (*do_reboot_t)(void);
@@ -401,6 +425,19 @@ void ninebotRecv()
 void loop()
 {
     unsigned long now = millis();
+#ifdef K1SWITCH
+    if(g_K1Flag)
+    {
+        g_K1Flag = false;
+        g_dischargeEnabled = !digitalRead(BMS_K1_PIN);
+
+        if(g_dischargeEnabled)
+            g_BMS.enableDischarging();
+        else
+            g_BMS.disableDischarging();
+    }
+#endif
+
     if(g_interruptFlag || (unsigned long)(now - g_lastUpdate) >= 500)
     {
         if(g_interruptFlag)
@@ -565,6 +602,8 @@ void debug_print()
     Serial.println(g_BMS.getBalancingStatus());
 
     Serial.print(F("Cell voltages ("));
+    Serial.print(g_BMS.getNumberOfConnectedCells());
+    Serial.print(F(" / "));
     int numCells = g_BMS.getNumberOfCells();
     Serial.print(numCells);
     Serial.println(F("):"));

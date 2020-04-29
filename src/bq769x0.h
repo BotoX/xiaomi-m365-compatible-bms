@@ -39,16 +39,11 @@ enum {
     ERROR_OVP = 3,
     ERROR_SCD = 4,
     ERROR_OCD = 5,
-    ERROR_USER_DISCHG_TEMP = 6,
-    ERROR_USER_CHG_TEMP = 7,
-    ERROR_USER_CHG_OCD = 8,
+    ERROR_USER_SWITCH = 6,
+    ERROR_USER_DISCHG_TEMP = 7,
+    ERROR_USER_CHG_TEMP = 8,
+    ERROR_USER_CHG_OCD = 9,
     NUM_ERRORS
-};
-
-enum {
-    USER_DISCHG_TEMP = 1,
-    USER_CHG_TEMP = 2,
-    USER_CHG_OCD = 4,
 };
 
 class bq769x0 {
@@ -60,15 +55,16 @@ public:
     void boot(uint8_t bootPin);
     uint8_t begin(uint8_t bootPin = 0xFF);
     uint8_t checkStatus();  // returns 0 if everything is OK
-    uint8_t checkUser();  // returns 0 if everything is OK
+    void checkUser();
+    void clearErrors();
     uint8_t update(void);  // returns checkStatus retval
     void shutdown(void);
 
     // charging control
-    bool enableCharging(void);
-    void disableCharging(void);
-    bool enableDischarging(void);
-    void disableDischarging(void);
+    bool enableCharging(uint16_t flag=(1 << ERROR_USER_SWITCH));
+    void disableCharging(uint16_t flag=(1 << ERROR_USER_SWITCH));
+    bool enableDischarging(uint16_t flag=(1 << ERROR_USER_SWITCH));
+    void disableDischarging(uint16_t flag=(1 << ERROR_USER_SWITCH));
 
     // hardware settings
     void setShuntResistorValue(uint32_t res_uOhm = 1000);
@@ -138,10 +134,14 @@ private:
     uint8_t I2CAddress_;
     uint8_t type_;
     bool crcEnabled_;
-    uint8_t userError_;
+
+    regSYS_STAT_t errorStatus_;
+    uint32_t errorTimestamps_[NUM_ERRORS];
 
     bool chargingEnabled_;
     bool dischargingEnabled_;
+    uint16_t chargingDisabled_;
+    uint16_t dischargingDisabled_;
 
     uint32_t shuntResistorValue_uOhm_;
     uint16_t thermistorBetaValue_; // typical value for Semitec 103AT-5 thermistor: 3435
@@ -193,7 +193,6 @@ private:
     int16_t adcPackOffset_; // mV
     int16_t *adcCellsOffset_; // mV
 
-    uint8_t errorStatus_;
     bool autoBalancingEnabled_;
     uint32_t balancingStatus_;     // holds on/off status of balancing switches
     uint16_t balancingMinIdleTime_s_;
