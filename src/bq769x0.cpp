@@ -217,8 +217,8 @@ uint8_t bq769x0::checkStatus()
                 #endif
             }
             if (sys_stat.bits.OV) { // OV error
-                dischargingEnabled_ = false;
-                dischargingDisabled_ |= (1 << ERROR_OVP);
+                chargingEnabled_ = false;
+                chargingDisabled_ |= (1 << ERROR_OVP);
 
                 errorCounter_[ERROR_OVP]++;
                 errorTimestamps_[ERROR_OVP] = millis();
