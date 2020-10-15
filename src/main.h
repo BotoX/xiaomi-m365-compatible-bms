@@ -21,6 +21,8 @@
 #define M365BMS_RADDR 0x22
 #define M365BMS_WADDR 0x25
 
+#define NINEBOT_BMSADDR 0x22
+
 struct BMSSettings
 {
     uint8_t header[2] = {0xB0, 0x0B};
@@ -128,12 +130,19 @@ struct M365BMS
 #endif
 } __attribute__((packed));
 
+enum {
+    PROTO_XIAOMI = 1,
+    PROTO_NINEBOT = 2
+};
+
 struct NinebotMessage
 {
-    uint8_t header[2]; // 0x55, 0xAA
+    uint8_t header[2]; // Xiaomi: 0x55, 0xAA | Ninebot: 0x5A, 0xA5
+    uint8_t proto;
 
     uint8_t length; // length of data + 2
-    uint8_t addr; // receiver address
+    uint8_t addr; // Xiaomi: address | Ninebot: source address
+    uint8_t dest_addr; // Ninebot only: destination address
     uint8_t mode; // read = 1 / write = 3
     uint8_t offset; // data offset/index in array
     uint8_t data[253]; // write = data, read = uint8_t read length

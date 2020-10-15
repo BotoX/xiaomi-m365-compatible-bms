@@ -181,8 +181,11 @@ void onNinebotMessage(NinebotMessage &msg)
     // Enable TX
     UCSR0B |= (1 << TXEN0);
 
-    if(msg.addr != M365BMS_RADDR)
+    if((msg.proto == PROTO_XIAOMI && msg.addr != M365BMS_RADDR) ||
+       (msg.proto == PROTO_NINEBOT && msg.dest_addr != NINEBOT_BMSADDR))
         return;
+
+    const int add = msg.proto == PROTO_XIAOMI ? 2 : 0;
 
     if(msg.mode == 0x01 || msg.mode == 0xF1)
     {
@@ -195,8 +198,15 @@ void onNinebotMessage(NinebotMessage &msg)
         if(sz > sizeof(NinebotMessage::data))
             return;
 
-        msg.addr = M365BMS_WADDR;
-        msg.length = 2 + sz;
+        if(msg.proto == PROTO_NINEBOT)
+        {
+            msg.addr = NINEBOT_BMSADDR;
+            msg.dest_addr = msg.addr;
+        }
+        else if(msg.proto == PROTO_XIAOMI)
+            msg.addr = M365BMS_WADDR;
+
+        msg.length = add + sz;
 
         if(msg.mode == 0x01)
         {
@@ -218,7 +228,7 @@ void onNinebotMessage(NinebotMessage &msg)
     else if(msg.mode == 0x03 || msg.mode == 0xF3)
     {
         uint16_t ofs = (uint16_t)msg.offset * 2; // word aligned
-        uint8_t sz = msg.length - 2;
+        uint8_t sz = msg.length - add;
 
         if(msg.mode == 0x03)
         {
@@ -293,14 +303,20 @@ void onNinebotMessage(NinebotMessage &msg)
 void ninebotSend(NinebotMessage &msg)
 {
     msg.checksum = (uint16_t)msg.length + msg.addr + msg.mode + msg.offset;
+    if(msg.proto == PROTO_NINEBOT)
+        msg.checksum += msg.dest_addr;
 
     Serial.write(msg.header[0]);
     Serial.write(msg.header[1]);
     Serial.write(msg.length);
     Serial.write(msg.addr);
+    if(msg.proto == PROTO_NINEBOT)
+        Serial.write(msg.dest_addr);
     Serial.write(msg.mode);
     Serial.write(msg.offset);
-    for(uint8_t i = 0; i < msg.length - 2; i++)
+
+    const int add = msg.proto == PROTO_XIAOMI ? 2 : 0;
+    for(uint8_t i = 0; i < msg.length - add; i++)
     {
         Serial.write(msg.data[i]);
         msg.checksum += msg.data[i];
@@ -334,7 +350,7 @@ void ninebotRecv()
         {
             case 1:
             {
-                if(byte != 0x55)
+                if(byte != 0x55 && byte != 0x5A)
                 { // header1 mismatch
                     recvd = 0;
                     break;
@@ -346,18 +362,24 @@ void ninebotRecv()
 
             case 2:
             {
-                if(byte != 0xAA)
+                if((msg.header[0] == 0x55 && byte != 0xAA) || // Xiaomi
+                   (msg.header[1] == 0x5A && byte != 0xA5)) // Ninebot
                 { // header2 mismatch
                     recvd = 0;
                     break;
                 }
 
                 msg.header[1] = byte;
+
+                if(msg.header[0] == 0x55 && msg.header[1] == 0xAA)
+                    msg.proto = PROTO_XIAOMI;
+                else if(msg.header[0] == 0x5A && msg.header[1] == 0xA5)
+                    msg.proto = PROTO_NINEBOT;
             } break;
 
             case 3: // length
             {
-                if(byte < 2)
+                if(msg.proto == PROTO_XIAOMI && byte < 2)
                 { // too small
                     recvd = 0;
                     break;
@@ -367,9 +389,9 @@ void ninebotRecv()
                 checksum = byte;
             } break;
 
-            case 4: // addr
+            case 4: // Xiaomi: addr | Ninebot: src_addr
             {
-                if(byte != M365BMS_RADDR)
+                if(msg.proto == PROTO_XIAOMI && byte != M365BMS_RADDR)
                 { // we're not the receiver of this message
                     recvd = 0;
                     break;
@@ -378,46 +400,62 @@ void ninebotRecv()
                 msg.addr = byte;
                 checksum += byte;
             } break;
-
-            case 5: // mode
-            {
-                msg.mode = byte;
-                checksum += byte;
-            } break;
-
-            case 6: // offset
-            {
-                msg.offset = byte;
-                checksum += byte;
-            } break;
-
-            default:
-            {
-                if(recvd - 7 < msg.length - 2)
-                { // data
-                    msg.data[recvd - 7] = byte;
-                    checksum += byte;
-                }
-                else if(recvd - 7 - msg.length + 2 == 0)
-                { // checksum LSB
-                    msg.checksum = byte;
-                }
-                else
-                { // checksum MSB and transmission finished
-                    msg.checksum |= (uint16_t)byte << 8;
-                    checksum ^= 0xFFFF;
-
-                    if(checksum != msg.checksum)
-                    { // invalid checksum
-                        recvd = 0;
-                        break;
-                    }
-
-                    onNinebotMessage(msg);
-                    recvd = 0;
-                }
-            } break;
         }
+
+        if(recvd < 5)
+            return;
+
+        if((msg.proto == PROTO_NINEBOT && recvd == 5)) // Ninebot: dest_addr
+        {
+            if(byte != NINEBOT_BMSADDR)
+            { // we're not the receiver of this message
+                recvd = 0;
+                break;
+            }
+            msg.dest_addr = byte;
+            checksum += byte;
+        }
+        else if((msg.proto == PROTO_XIAOMI && recvd == 5) ||
+            (msg.proto == PROTO_NINEBOT && recvd == 6)) // mode
+        {
+            msg.mode = byte;
+            checksum += byte;
+        }
+        else if((msg.proto == PROTO_XIAOMI && recvd == 6) ||
+            (msg.proto == PROTO_NINEBOT && recvd == 7)) // offset
+        {
+            msg.offset = byte;
+            checksum += byte;
+        }
+        else
+        {
+            const int ofs = msg.proto == PROTO_XIAOMI ? 7 : 8;
+            const int add = msg.proto == PROTO_XIAOMI ? 2 : 0;
+
+            if(recvd - ofs < msg.length - add)
+            { // data
+                msg.data[recvd - ofs] = byte;
+                checksum += byte;
+            }
+            else if(recvd - ofs - msg.length + add == 0)
+            { // checksum LSB
+                msg.checksum = byte;
+            }
+            else
+            { // checksum MSB and transmission finished
+                msg.checksum |= (uint16_t)byte << 8;
+                checksum ^= 0xFFFF;
+
+                if(checksum != msg.checksum)
+                { // invalid checksum
+                    recvd = 0;
+                    break;
+                }
+
+                onNinebotMessage(msg);
+                recvd = 0;
+            }
+        } break;
     }
 }
 
